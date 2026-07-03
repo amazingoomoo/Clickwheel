@@ -1,0 +1,62 @@
+name: Build IPA
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned)
+        run: |
+          set -e
+          xcodebuild \
+            -project ClickWheel.xcodeproj \
+            -scheme ClickWheel \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package into IPA
+        run: |
+          set -e
+          APP_PATH="build/Build/Products/Release-iphoneos/ClickWheel.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Build product not found at $APP_PATH"; exit 1
+          fi
+          mkdir -p out/Payload
+          cp -R "$APP_PATH" out/Payload/
+          (cd out && zip -qr ClickWheel.ipa Payload && rm -rf Payload)
+          ls -la out
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ClickWheel-ipa
+          path: out/ClickWheel.ipa
+
+      - name: Publish to "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          files: out/ClickWheel.ipa
+        continue-on-error: true
