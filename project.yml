@@ -4,6 +4,7 @@ options:
   deploymentTarget:
     iOS: "15.0"
   createIntermediateGroups: true
+  objectVersion: 54
 settings:
   base:
     MARKETING_VERSION: "1.0"
