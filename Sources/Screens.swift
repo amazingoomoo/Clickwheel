@@ -109,26 +109,29 @@ struct ListScreen: View {
     let sel: Int
     let store: Store
 
-    private let visible = 11
-
     var body: some View {
-        VStack(spacing: 0) {
-            Text(title)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(theme.fg)
-                .frame(maxWidth: .infinity)
-                .frame(height: 30)
+        GeometryReader { geo in
+            let rowH: CGFloat = 30
+            let headerH: CGFloat = 30
+            let maxRows = max(1, Int((geo.size.height - headerH) / rowH))
+            VStack(spacing: 0) {
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(theme.fg)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: headerH)
 
-            let start = windowStart()
-            let end = min(start + visible, rows.count)
-            ForEach(Array(start..<end), id: \.self) { i in
-                RowView(row: rows[i], selected: i == sel, store: store)
+                let start = windowStart(maxRows)
+                let end = min(start + maxRows, rows.count)
+                ForEach(Array(start..<end), id: \.self) { i in
+                    RowView(row: rows[i], selected: i == sel, store: store)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
     }
 
-    private func windowStart() -> Int {
+    private func windowStart(_ visible: Int) -> Int {
         if sel < visible { return 0 }
         return min(sel - visible + 1, max(0, rows.count - visible))
     }
@@ -142,28 +145,32 @@ struct NowPlayingScreen: View {
     let store: Store
 
     var body: some View {
-        VStack(spacing: 0) {
-            artwork
-            VStack(spacing: 7) {
-                Text(player.current?.title ?? "\u{2014}")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(theme.fg)
-                    .lineLimit(1)
-                if let artist = player.current?.artist, !artist.isEmpty {
-                    Text(artist)
-                        .font(.system(size: 12))
-                        .foregroundColor(theme.muted)
+        GeometryReader { geo in
+            let infoH: CGFloat = 96
+            let side = max(0, min(geo.size.width, geo.size.height - infoH))
+            VStack(spacing: 0) {
+                artwork(side: side)
+                VStack(spacing: 7) {
+                    Text(player.current?.title ?? "\u{2014}")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(theme.fg)
                         .lineLimit(1)
+                    if let artist = player.current?.artist, !artist.isEmpty {
+                        Text(artist)
+                            .font(.system(size: 12))
+                            .foregroundColor(theme.muted)
+                            .lineLimit(1)
+                    }
+                    controlSlot
                 }
-                controlSlot
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            Spacer(minLength: 0)
         }
     }
 
-    private var artwork: some View {
+    private func artwork(side: CGFloat) -> some View {
         ZStack {
             if let img = player.artwork {
                 Image(uiImage: img).resizable().scaledToFill()
@@ -177,9 +184,9 @@ struct NowPlayingScreen: View {
                     )
             }
         }
-        .frame(maxWidth: .infinity)
-        .aspectRatio(1, contentMode: .fit)
+        .frame(width: side, height: side)
         .clipped()
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder private var controlSlot: some View {

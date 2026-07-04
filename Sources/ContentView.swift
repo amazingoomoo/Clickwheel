@@ -16,22 +16,49 @@ struct ContentView: View {
     private var theme: AppTheme { Themes.resolve(store.themeKey, systemDark: colorScheme == .dark) }
 
     var body: some View {
-        ZStack {
-            theme.bg.ignoresSafeArea()
+        GeometryReader { geo in
+            let W = geo.size.width
+            let H = geo.size.height
+            let big = store.wheelStyle == "large"
+            let gap = max(CGFloat(14), W * 0.045)
+            let wheelD: CGFloat = big ? (W - 2 * gap) : (W * 0.42).rounded()
+            let regionH: CGFloat = big ? (wheelD + gap) : max((H * 0.32).rounded(), wheelD + 12)
+            let contentH = max(0, H - regionH)
+            let wheelAlign: Alignment = store.wheelStyle == "small-bottom" ? .bottom
+                : (store.wheelStyle == "small-mid" ? .center : .top)
 
-            VStack(spacing: 0) {
-                ZStack {
-                    if store.symbolsOn { MotifBackground(themeKey: store.themeKey) }
-                    screenContent
+            ZStack {
+                theme.bg.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    ZStack {
+                        if store.symbolsOn { MotifBackground(themeKey: store.themeKey) }
+                        screenContent
+                    }
+                    .frame(width: W, height: contentH)
+                    .clipped()
+
+                    ZStack(alignment: wheelAlign) {
+                        Color.clear
+                        ClickWheel(
+                            diameter: wheelD,
+                            onScrollUp: { scroll(-1) },
+                            onScrollDown: { scroll(1) },
+                            onMenu: { menuBack() },
+                            onSelect: { onCenter() },
+                            onPrev: { player.previous() },
+                            onNext: { player.next() },
+                            onPlayPause: { onPlay() },
+                            onLongCenter: { onLongCenter() }
+                        )
+                    }
+                    .frame(width: W, height: regionH)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                wheelArea
+                VolumeHost().frame(width: 1, height: 1).opacity(0.001)
+
+                if showNameEntry { nameOverlay }
             }
-
-            VolumeHost().frame(width: 1, height: 1).opacity(0.001)
-
-            if showNameEntry { nameOverlay }
         }
         .environment(\.appTheme, theme)
         .preferredColorScheme(store.themeKey == "auto" ? nil : (theme.isDark ? .dark : .light))
@@ -46,28 +73,6 @@ struct ContentView: View {
         } else {
             ListScreen(title: title(for: entry), rows: rows(for: entry), sel: entry.sel, store: store)
         }
-    }
-
-    private var wheelArea: some View {
-        let big = store.wheelStyle == "large"
-        let d: CGFloat = big ? 190 : 140
-        let alignment: Alignment = store.wheelStyle == "small-top" ? .top
-            : (store.wheelStyle == "small-bottom" ? .bottom : .center)
-        return ZStack(alignment: alignment) {
-            Color.clear
-            ClickWheel(
-                diameter: d,
-                onScrollUp: { scroll(-1) },
-                onScrollDown: { scroll(1) },
-                onMenu: { menuBack() },
-                onSelect: { onCenter() },
-                onPrev: { player.previous() },
-                onNext: { player.next() },
-                onPlayPause: { onPlay() },
-                onLongCenter: { onLongCenter() }
-            )
-        }
-        .frame(height: 210)
     }
 
     private var nameOverlay: some View {
