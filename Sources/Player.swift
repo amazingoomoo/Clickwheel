@@ -4,45 +4,39 @@ import AVFoundation
 import MediaPlayer
 import UIKit
 
+enum NowPlayingMode {
+    case volume
+    case scrub
+    case favourite
+}
+
 final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
-
-    // Library
-    @Published var tracks: [Track] = []
-
-    // Playback state
-    @Published var currentIndex: Int? = nil
+    @Published var queue: [Track] = []
+    @Published var index: Int = 0
     @Published var isPlaying: Bool = false
     @Published var currentTime: TimeInterval = 0
     @Published var duration: TimeInterval = 0
     @Published var shuffle: Bool = false
+    @Published var artwork: UIImage? = nil
 
-    // Now-playing display (updated from file metadata)
-    @Published var nowPlayingTitle: String = ""
-    @Published var nowPlayingArtist: String = ""
-    @Published var nowPlayingArtwork: UIImage? = nil
+    @Published var mode: NowPlayingMode = .volume
+    @Published var volume: Float = 0.5
+    @Published var volumeVisible: Bool = false
 
-    private var audioPlayer: AVAudioPlayer?
+    private var audio: AVAudioPlayer?
     private var timer: Timer?
+    private var volumeHideWork: DispatchWorkItem?
 
-    private let audioExtensions: Set<String> = [
-        "mp3", "m4a", "aac", "alac", "wav", "aif", "aiff", "caf", "m4b", "flac"
-    ]
-
-    var currentTrack: Track? {
-        guard let i = currentIndex, tracks.indices.contains(i) else { return nil }
-        return tracks[i]
-    }
+    var current: Track? { queue.indices.contains(index) ? queue[index] : nil }
 
     override init() {
         super.init()
-        configureAudioSession()
+        configureSession()
         setupRemoteCommands()
-        loadLibrary()
+        volume = SystemVolume.shared.current
     }
 
-    // MARK: - Audio session
-
-    private func configureAudioSession() {
+    private func configureSession() {
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
@@ -51,102 +45,76 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
         }
     }
 
-    // MARK: - Library scan
+    // MARK: - Queue control
 
-    func loadLibrary() {
-        let fm = FileManager.default
-        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-        var found: [Track] = []
-        if let enumerator = fm.enumerator(at: docs, includingPropertiesForKeys: nil) {
-            for case let url as URL in enumerator {
-                if audioExtensions.contains(url.pathExtension.lowercased()) {
-                    found.append(Track(url: url))
-                }
-            }
-        }
-        found.sort {
-            $0.displayTitle.localizedCaseInsensitiveCompare($1.displayTitle) == .orderedAscending
-        }
-        DispatchQueue.main.async {
-            self.tracks = found
-        }
+    func playQueue(_ tracks: [Track], startAt: Int) {
+        guard !tracks.isEmpty, tracks.indices.contains(startAt) else { return }
+        shuffle = false
+        queue = tracks
+        index = startAt
+        mode = .volume
+        volumeVisible = false
+        startCurrent()
     }
 
-    // MARK: - Playback
+    func shufflePlay(_ tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        queue = tracks.shuffled()
+        index = 0
+        shuffle = true
+        mode = .volume
+        volumeVisible = false
+        startCurrent()
+    }
 
-    func play(at index: Int) {
-        guard tracks.indices.contains(index) else { return }
-        currentIndex = index
-        let track = tracks[index]
+    private func startCurrent() {
+        guard let track = current else { return }
         do {
-            let newPlayer = try AVAudioPlayer(contentsOf: track.url)
-            newPlayer.delegate = self
-            newPlayer.prepareToPlay()
-            audioPlayer = newPlayer
-            duration = newPlayer.duration
+            let player = try AVAudioPlayer(contentsOf: track.url)
+            player.delegate = self
+            player.prepareToPlay()
+            audio = player
+            duration = player.duration
             currentTime = 0
-            newPlayer.play()
+            player.play()
             isPlaying = true
             startTimer()
-            loadMetadata(for: track)
+            loadArtwork(track)
             updateNowPlayingInfo()
         } catch {
             print("Could not play \(track.url.lastPathComponent): \(error)")
+            next()
         }
     }
 
     func togglePlayPause() {
-        guard let player = audioPlayer else {
-            if let i = currentIndex {
-                play(at: i)
-            } else if !tracks.isEmpty {
-                play(at: 0)
-            }
+        guard let player = audio else {
+            if current != nil { startCurrent() }
             return
         }
         if player.isPlaying {
-            player.pause()
-            isPlaying = false
-            stopTimer()
+            player.pause(); isPlaying = false; stopTimer()
         } else {
-            player.play()
-            isPlaying = true
-            startTimer()
+            player.play(); isPlaying = true; startTimer()
         }
         updateNowPlayingInfo()
     }
 
     func next() {
-        guard !tracks.isEmpty else { return }
-        let n: Int
-        if shuffle {
-            n = Int.random(in: 0..<tracks.count)
-        } else if let i = currentIndex {
-            n = (i + 1) % tracks.count
-        } else {
-            n = 0
-        }
-        play(at: n)
+        guard !queue.isEmpty else { return }
+        index = shuffle ? Int.random(in: 0..<queue.count) : (index + 1) % queue.count
+        startCurrent()
     }
 
     func previous() {
-        guard !tracks.isEmpty else { return }
-        // If more than 3 seconds in, restart the current track instead.
-        if currentTime > 3, let i = currentIndex {
-            play(at: i)
-            return
-        }
-        let p: Int
-        if let i = currentIndex {
-            p = (i - 1 + tracks.count) % tracks.count
-        } else {
-            p = 0
-        }
-        play(at: p)
+        guard !queue.isEmpty else { return }
+        if currentTime > 3 { startCurrent(); return }
+        index = (index - 1 + queue.count) % queue.count
+        startCurrent()
     }
 
     func seek(to time: TimeInterval) {
-        guard let player = audioPlayer else { return }
+        guard let player = audio else { return }
         let clamped = min(max(0, time), player.duration)
         player.currentTime = clamped
         currentTime = clamped
@@ -154,24 +122,43 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
 
     func scrub(by delta: TimeInterval) {
-        guard let player = audioPlayer else { return }
+        guard let player = audio else { return }
         seek(to: player.currentTime + delta)
     }
 
-    // MARK: - Timer for progress updates
+    // MARK: - Volume
+
+    func nudgeVolume(_ delta: Float) {
+        volume = min(1, max(0, volume + delta))
+        SystemVolume.shared.set(volume)
+        volumeVisible = true
+        volumeHideWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.volumeVisible = false }
+        volumeHideWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+    }
+
+    // MARK: - Now Playing mode
+
+    func cycleMode() {
+        switch mode {
+        case .volume: mode = .scrub
+        case .scrub: mode = .favourite
+        case .favourite: mode = .volume
+        }
+        volumeVisible = false
+    }
+
+    // MARK: - Timer
 
     private func startTimer() {
         stopTimer()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            guard let self = self, let player = self.audioPlayer else { return }
+            guard let self = self, let player = self.audio else { return }
             self.currentTime = player.currentTime
         }
     }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
-    }
+    private func stopTimer() { timer?.invalidate(); timer = nil }
 
     // MARK: - AVAudioPlayerDelegate
 
@@ -179,112 +166,60 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
         next()
     }
 
-    // MARK: - Metadata
+    // MARK: - Artwork
 
-    private func loadMetadata(for track: Track) {
-        // Immediate fallback so the screen is never blank.
-        nowPlayingTitle = track.displayTitle
-        nowPlayingArtist = ""
-        nowPlayingArtwork = nil
-
+    private func loadArtwork(_ track: Track) {
+        artwork = nil
         let url = track.url
         DispatchQueue.global(qos: .userInitiated).async {
             let asset = AVURLAsset(url: url)
-            var title: String?
-            var artist: String?
-            var artwork: UIImage?
-
-            for item in asset.commonMetadata {
-                guard let key = item.commonKey else { continue }
-                switch key {
-                case .commonKeyTitle:
-                    title = item.stringValue
-                case .commonKeyArtist:
-                    artist = item.stringValue
-                case .commonKeyArtwork:
-                    if let data = item.dataValue, let image = UIImage(data: data) {
-                        artwork = image
-                    }
-                default:
-                    break
-                }
+            var image: UIImage? = nil
+            for item in asset.commonMetadata where item.commonKey == .commonKeyArtwork {
+                if let data = item.dataValue, let img = UIImage(data: data) { image = img }
             }
-
             DispatchQueue.main.async {
-                // Only apply if this is still the track that's playing.
-                guard self.currentTrack?.url == url else { return }
-                if let title = title, !title.isEmpty {
-                    self.nowPlayingTitle = title
+                if self.current?.url == url {
+                    self.artwork = image
+                    self.updateNowPlayingInfo()
                 }
-                if let artist = artist, !artist.isEmpty {
-                    self.nowPlayingArtist = artist
-                }
-                self.nowPlayingArtwork = artwork
-                self.updateNowPlayingInfo()
             }
         }
     }
 
-    // MARK: - Lock screen / Control Center
+    // MARK: - Lock screen
 
     private func setupRemoteCommands() {
         let center = MPRemoteCommandCenter.shared()
-
-        center.playCommand.addTarget { [weak self] _ in
-            self?.resume()
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            self?.pausePlayback()
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
-            return .success
-        }
-        center.nextTrackCommand.addTarget { [weak self] _ in
-            self?.next()
-            return .success
-        }
-        center.previousTrackCommand.addTarget { [weak self] _ in
-            self?.previous()
-            return .success
-        }
+        center.playCommand.addTarget { [weak self] _ in self?.resume(); return .success }
+        center.pauseCommand.addTarget { [weak self] _ in self?.pausePlayback(); return .success }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in self?.togglePlayPause(); return .success }
+        center.nextTrackCommand.addTarget { [weak self] _ in self?.next(); return .success }
+        center.previousTrackCommand.addTarget { [weak self] _ in self?.previous(); return .success }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
-            if let event = event as? MPChangePlaybackPositionCommandEvent {
-                self?.seek(to: event.positionTime)
-            }
+            if let event = event as? MPChangePlaybackPositionCommandEvent { self?.seek(to: event.positionTime) }
             return .success
         }
     }
 
     private func resume() {
-        guard let player = audioPlayer else { return }
-        player.play()
-        isPlaying = true
-        startTimer()
-        updateNowPlayingInfo()
+        guard let player = audio else { return }
+        player.play(); isPlaying = true; startTimer(); updateNowPlayingInfo()
     }
-
     private func pausePlayback() {
-        guard let player = audioPlayer else { return }
-        player.pause()
-        isPlaying = false
-        stopTimer()
-        updateNowPlayingInfo()
+        guard let player = audio else { return }
+        player.pause(); isPlaying = false; stopTimer(); updateNowPlayingInfo()
     }
 
     private func updateNowPlayingInfo() {
         var info: [String: Any] = [:]
-        info[MPMediaItemPropertyTitle] = nowPlayingTitle
-        info[MPMediaItemPropertyArtist] = nowPlayingArtist
+        info[MPMediaItemPropertyTitle] = current?.title ?? ""
+        info[MPMediaItemPropertyArtist] = current?.artist ?? ""
+        info[MPMediaItemPropertyAlbumTitle] = current?.album ?? ""
         info[MPMediaItemPropertyPlaybackDuration] = duration
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        if let artwork = nowPlayingArtwork {
-            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: artwork.size) { _ in
-                artwork
-            }
+        if let art = artwork {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: art.size) { _ in art }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }

@@ -1,218 +1,238 @@
 import SwiftUI
 
-// MARK: - Shared building blocks
+// MARK: - Navigation model
 
-struct TitleBar: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundColor(.white)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .frame(height: 24)
-            .background(
-                LinearGradient(
-                    colors: [Theme.barTop, Theme.barBottom],
-                    startPoint: .top, endPoint: .bottom
-                )
-            )
-    }
+enum Screen: Equatable {
+    case main, musicMenu, albums, artists, tracks
+    case albumTracks(String)
+    case artistTracks(String)
+    case favourites, playlists
+    case playlistTracks(Int)
+    case plEdit(Int)
+    case addToPlaylist(String)
+    case settings, themeList, wheelList
+    case nowPlaying
 }
 
-struct Row: View {
-    let text: String
+struct NavEntry {
+    var screen: Screen
+    var sel: Int = 0
+    var edit: Int? = nil
+}
+
+enum RowTrailing {
+    case none
+    case checkmark(Bool)
+    case value(String)
+}
+
+enum WAction {
+    case go(Screen, Int?)
+    case playFrom
+    case shuffle([Track])
+    case theme(String)
+    case wheel(String)
+    case toggleSymbols
+    case newPlaylist
+    case newPlaylistAdd
+    case addToPlaylist(Int)
+    case toggleMember(Int, String)
+    case none
+}
+
+struct WRow {
+    var label: String
+    var trackPath: String? = nil
+    var editPlaylist: Int? = nil
+    var trailing: RowTrailing = .none
+    var action: WAction
+}
+
+// MARK: - Row
+
+struct RowView: View {
+    @Environment(\.appTheme) var theme
+    let row: WRow
     let selected: Bool
-    var chevron: Bool = false
+    let store: Store
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(text)
+            Text(row.label)
                 .font(.system(size: 14))
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 4)
-            if chevron {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(selected ? .white : Theme.inkSoft)
-            }
+            trailingView
         }
-        .padding(.horizontal, 10)
-        .frame(height: 28)
-        .foregroundColor(selected ? .white : Theme.ink)
-        .background(selectionBackground)
+        .padding(.horizontal, 16)
+        .frame(height: 30)
+        .foregroundColor(selected ? theme.selFg : theme.fg)
+        .background(selected ? theme.selBg : Color.clear)
     }
 
-    @ViewBuilder
-    private var selectionBackground: some View {
-        if selected {
-            LinearGradient(
-                colors: [Theme.selTop, Theme.selBottom],
-                startPoint: .top, endPoint: .bottom
-            )
+    @ViewBuilder private var trailingView: some View {
+        if let editIdx = row.editPlaylist, let path = row.trackPath {
+            let member = store.isMember(path, playlistIndex: editIdx)
+            Image(systemName: member ? "checkmark" : "circle")
+                .font(.system(size: 12, weight: member ? .bold : .regular))
+                .foregroundColor(selected ? theme.selFg : (member ? theme.accent : theme.muted))
+        } else if let path = row.trackPath, store.isFavourite(path) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 12))
+                .foregroundColor(selected ? theme.selFg : favouriteGold)
         } else {
-            Color.clear
-        }
-    }
-}
-
-struct EmptyState: View {
-    var body: some View {
-        VStack(spacing: 6) {
-            Spacer()
-            Image(systemName: "music.note")
-                .font(.system(size: 26))
-                .foregroundColor(Theme.inkSoft)
-            Text("No music yet")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(Theme.ink)
-            Text("Add songs to the ClickWheel folder\nover USB, then reopen the app.")
-                .font(.system(size: 10))
-                .foregroundColor(Theme.inkSoft)
-                .multilineTextAlignment(.center)
-            Spacer()
-        }
-        .padding(.horizontal, 14)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-// MARK: - Menu
-
-struct MenuScreen: View {
-    let items: [String]
-    let selection: Int
-
-    var body: some View {
-        VStack(spacing: 0) {
-            TitleBar(text: "iPod")
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    Row(text: item, selected: index == selection, chevron: true)
+            switch row.trailing {
+            case .checkmark(let on):
+                if on {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(selected ? theme.selFg : theme.accent)
                 }
-                Spacer(minLength: 0)
+            case .value(let text):
+                Text(text)
+                    .font(.system(size: 13))
+                    .foregroundColor(selected ? theme.selFg : theme.muted)
+            case .none:
+                EmptyView()
             }
         }
     }
 }
 
-// MARK: - Songs
+// MARK: - List screen
 
-struct SongScreen: View {
-    let tracks: [Track]
-    let selection: Int
+struct ListScreen: View {
+    @Environment(\.appTheme) var theme
+    let title: String
+    let rows: [WRow]
+    let sel: Int
+    let store: Store
 
-    private let visibleRows = 6
+    private let visible = 11
 
     var body: some View {
         VStack(spacing: 0) {
-            TitleBar(text: "Songs")
-            if tracks.isEmpty {
-                EmptyState()
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(visibleIndices, id: \.self) { index in
-                        Row(text: tracks[index].displayTitle, selected: index == selection)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-    }
+            Text(title)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(theme.fg)
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
 
-    private var visibleIndices: [Int] {
-        let start = windowStart()
-        let end = min(start + visibleRows, tracks.count)
-        return Array(start..<end)
+            let start = windowStart()
+            let end = min(start + visible, rows.count)
+            ForEach(Array(start..<end), id: \.self) { i in
+                RowView(row: rows[i], selected: i == sel, store: store)
+            }
+            Spacer(minLength: 0)
+        }
     }
 
     private func windowStart() -> Int {
-        if selection < visibleRows { return 0 }
-        return min(selection - visibleRows + 1, max(0, tracks.count - visibleRows))
+        if sel < visible { return 0 }
+        return min(sel - visible + 1, max(0, rows.count - visible))
     }
 }
 
 // MARK: - Now Playing
 
 struct NowPlayingScreen: View {
-    @EnvironmentObject var player: Player
+    @Environment(\.appTheme) var theme
+    @ObservedObject var player: Player
+    let store: Store
 
     var body: some View {
         VStack(spacing: 0) {
-            TitleBar(text: "Now Playing")
+            artwork
             VStack(spacing: 7) {
-                artwork
-                Text(player.nowPlayingTitle.isEmpty ? "—" : player.nowPlayingTitle)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Theme.ink)
+                Text(player.current?.title ?? "\u{2014}")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(theme.fg)
                     .lineLimit(1)
-                if !player.nowPlayingArtist.isEmpty {
-                    Text(player.nowPlayingArtist)
-                        .font(.system(size: 11))
-                        .foregroundColor(Theme.inkSoft)
+                if let artist = player.current?.artist, !artist.isEmpty {
+                    Text(artist)
+                        .font(.system(size: 12))
+                        .foregroundColor(theme.muted)
                         .lineLimit(1)
                 }
-                Spacer(minLength: 0)
-                progress
+                controlSlot
             }
-            .padding(10)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            Spacer(minLength: 0)
         }
     }
 
     private var artwork: some View {
-        Group {
-            if let image = player.nowPlayingArtwork {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
+        ZStack {
+            if let img = player.artwork {
+                Image(uiImage: img).resizable().scaledToFill()
             } else {
-                LinearGradient(
-                    colors: [Theme.selTop, Theme.selBottom],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-                .overlay(
-                    Image(systemName: "music.note")
-                        .font(.system(size: 26))
-                        .foregroundColor(.white.opacity(0.85))
-                )
+                LinearGradient(colors: [theme.accent.opacity(0.85), theme.accent.opacity(0.4)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                    .overlay(
+                        Image(systemName: "music.note")
+                            .font(.system(size: 48))
+                            .foregroundColor(.white.opacity(0.85))
+                    )
             }
         }
-        .frame(width: 76, height: 76)
-        .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-        .padding(.top, 6)
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1, contentMode: .fit)
+        .clipped()
     }
 
-    private var progress: some View {
-        VStack(spacing: 3) {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.black.opacity(0.12))
-                    Capsule()
-                        .fill(Theme.accent)
-                        .frame(width: geo.size.width * CGFloat(fraction))
+    @ViewBuilder private var controlSlot: some View {
+        if player.mode == .favourite {
+            let on = player.current.map { store.isFavourite($0.relativePath) } ?? false
+            Image(systemName: on ? "star.fill" : "star")
+                .font(.system(size: 40))
+                .foregroundColor(on ? favouriteGold : theme.muted)
+                .padding(.top, 4)
+        } else if player.mode == .volume && player.volumeVisible {
+            HStack(spacing: 10) {
+                Image(systemName: "speaker.fill").font(.system(size: 12)).foregroundColor(theme.muted)
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(theme.divider)
+                        Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(player.volume))
+                    }
                 }
+                .frame(height: 5)
+                Image(systemName: "speaker.wave.3.fill").font(.system(size: 12)).foregroundColor(theme.muted)
             }
-            .frame(height: 5)
-
-            HStack {
-                Text(timeString(player.currentTime))
-                Spacer()
-                Text("-" + timeString(max(0, player.duration - player.currentTime)))
+            .frame(height: 22)
+            .padding(.top, 6)
+        } else {
+            VStack(spacing: 4) {
+                GeometryReader { g in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(theme.divider)
+                        Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
+                        if player.mode == .scrub {
+                            Circle().fill(theme.accent).frame(width: 14, height: 14)
+                                .offset(x: g.size.width * CGFloat(fraction) - 7)
+                        }
+                    }
+                }
+                .frame(height: player.mode == .scrub ? 7 : 5)
+                HStack {
+                    Text(timeString(player.currentTime))
+                    Spacer()
+                    Text("-" + timeString(max(0, player.duration - player.currentTime)))
+                }
+                .font(.system(size: 10))
+                .foregroundColor(theme.muted)
             }
-            .font(.system(size: 9, weight: .medium))
-            .foregroundColor(Theme.inkSoft)
+            .padding(.top, 6)
         }
     }
 
     private var fraction: Double {
-        player.duration > 0
-            ? min(1, max(0, player.currentTime / player.duration))
-            : 0
+        player.duration > 0 ? min(1, max(0, player.currentTime / player.duration)) : 0
     }
-
-    private func timeString(_ time: TimeInterval) -> String {
-        let total = Int(time)
-        return String(format: "%d:%02d", total / 60, total % 60)
+    private func timeString(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 }
