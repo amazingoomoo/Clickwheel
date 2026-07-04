@@ -39,21 +39,22 @@ jobs:
       - name: Fakesign with entitlements (TrollStore)
         run: |
           set -e
-          brew install ldid
           APP="build/Build/Products/Release-iphoneos/ClickWheel.app"
           BIN="$APP/ClickWheel"
-          echo "Applying entitlements with ldid..."
-          ldid -S"$GITHUB_WORKSPACE/entitlements.plist" "$BIN"
-          echo "=== Entitlements embedded in the binary: ==="
-          ldid -e "$BIN" || true
-          if ldid -e "$BIN" | grep -q "no-sandbox"; then
-            echo "OK: no-sandbox entitlement is embedded."
-          else
-            echo "ldid did not embed entitlements — falling back to codesign."
-            codesign --force --sign - --entitlements "$GITHUB_WORKSPACE/entitlements.plist" "$BIN"
-            echo "=== After codesign fallback: ==="
-            codesign -d --entitlements - "$BIN" 2>&1 || true
+          ENTS="$GITHUB_WORKSPACE/entitlements.plist"
+          echo "Checking for entitlements file and app binary..."
+          if [ ! -f "$ENTS" ]; then
+            echo "ERROR: entitlements.plist not found at repo root ($ENTS)"
+            echo "Repo root contents:"; ls -la "$GITHUB_WORKSPACE"
+            exit 1
           fi
+          if [ ! -f "$BIN" ]; then
+            echo "ERROR: app binary not found ($BIN)"; exit 1
+          fi
+          echo "Signing with entitlements via codesign (ad-hoc)..."
+          codesign --force --sign - --entitlements "$ENTS" --timestamp=none "$BIN"
+          echo "=== Entitlements now embedded in the binary: ==="
+          codesign -d --entitlements :- "$BIN" 2>&1 || codesign -d --entitlements - "$BIN" 2>&1 || true
 
       - name: Package into IPA
         run: |
