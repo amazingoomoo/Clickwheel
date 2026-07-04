@@ -10,7 +10,7 @@ enum Screen: Equatable {
     case playlistTracks(Int)
     case plEdit(Int)
     case addToPlaylist(String)
-    case settings, themeList, wheelList
+    case settings, themeList, wheelList, idleList
     case nowPlaying
 }
 
@@ -35,6 +35,7 @@ enum WAction {
     case toggleSymbols
     case toggleHaptics
     case toggleClick
+    case idle(Int)
     case newPlaylist
     case newPlaylistAdd
     case addToPlaylist(Int)

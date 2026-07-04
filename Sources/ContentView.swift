@@ -7,6 +7,7 @@ struct ContentView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var stack: [NavEntry] = [NavEntry(screen: .main)]
+    @State private var idleWork: DispatchWorkItem? = nil
 
     @State private var showNameEntry = false
     @State private var nameText = ""
@@ -53,8 +54,8 @@ struct ContentView: View {
                             onScrollDown: { scroll(1) },
                             onMenu: { menuBack() },
                             onSelect: { onCenter() },
-                            onPrev: { player.previous() },
-                            onNext: { player.next() },
+                            onPrev: { resetIdleTimer(); player.previous() },
+                            onNext: { resetIdleTimer(); player.next() },
                             onPlayPause: { onPlay() },
                             onLongCenter: { onLongCenter() }
                         )
@@ -70,6 +71,7 @@ struct ContentView: View {
         .ignoresSafeArea(.container, edges: .bottom)
         .environment(\.appTheme, theme)
         .preferredColorScheme(store.themeKey == "auto" ? nil : (theme.isDark ? .dark : .light))
+        .onAppear { resetIdleTimer() }
     }
 
     // MARK: - Screen content
@@ -136,6 +138,7 @@ struct ContentView: View {
         case .settings: return "Settings"
         case .themeList: return "Theme"
         case .wheelList: return "Wheel"
+        case .idleList: return "Return to Now Playing"
         case .nowPlaying: return "Now Playing"
         }
     }
@@ -237,8 +240,11 @@ struct ContentView: View {
                 WRow(label: "Wheel", action: .go(.wheelList, nil)),
                 WRow(label: "Background Symbols", trailing: .value(store.symbolsOn ? "On" : "Off"), action: .toggleSymbols),
                 WRow(label: "Haptics", trailing: .value(store.hapticsOn ? "On" : "Off"), action: .toggleHaptics),
-                WRow(label: "Wheel Click", trailing: .value(store.clickOn ? "On" : "Off"), action: .toggleClick)
+                WRow(label: "Wheel Click", trailing: .value(store.clickOn ? "On" : "Off"), action: .toggleClick),
+                WRow(label: "Return to Now Playing", trailing: .value(idleLabel(store.idleTimeout)), action: .go(.idleList, nil))
             ]
+        case .idleList:
+            return idleOptions.map { WRow(label: $0.1, trailing: .checkmark($0.0 == store.idleTimeout), action: .idle($0.0)) }
         case .themeList:
             return Themes.order.map { key in
                 WRow(label: Themes.labels[key] ?? key, trailing: .checkmark(key == store.themeKey), action: .theme(key))
@@ -254,6 +260,7 @@ struct ContentView: View {
     // MARK: - Wheel dispatch
 
     private func scroll(_ dir: Int) {
+        resetIdleTimer()
         Haptics.tick(haptic: store.hapticsOn, click: store.clickOn)
         let entry = stack[stack.count - 1]
         if entry.screen == .nowPlaying {
@@ -272,18 +279,26 @@ struct ContentView: View {
     }
 
     private func onCenter() {
+        resetIdleTimer()
         if stack.last?.screen == .nowPlaying { player.cycleMode() } else { select() }
     }
 
     private func onPlay() {
-        if stack.last?.screen == .nowPlaying && player.mode == .favourite {
-            if let p = player.current?.relativePath { store.toggleFavourite(p) }
-        } else {
-            player.togglePlayPause()
+        resetIdleTimer()
+        if stack.last?.screen == .nowPlaying {
+            if player.mode == .favourite {
+                if let p = player.current?.relativePath { store.toggleFavourite(p) }
+            } else {
+                player.togglePlayPause()
+            }
+        } else if player.current != nil {
+            // In a menu with something loaded: jump to Now Playing instead of toggling.
+            pushNowPlaying()
         }
     }
 
     private func onLongCenter() {
+        resetIdleTimer()
         let entry = stack[stack.count - 1]
         var path: String? = nil
         if entry.screen == .nowPlaying {
@@ -295,13 +310,40 @@ struct ContentView: View {
         if let p = path { stack.append(NavEntry(screen: .addToPlaylist(p))) }
     }
 
-    private func menuBack() { popTop() }
+    private func menuBack() { resetIdleTimer(); popTop() }
 
     private func pushNowPlaying() {
         if stack.last?.screen != .nowPlaying { stack.append(NavEntry(screen: .nowPlaying)) }
     }
     private func popTop() {
         if stack.count > 1 { stack.removeLast() }
+    }
+
+    // MARK: - Idle timer
+
+    private let idleOptions: [(Int, String)] = [(10, "10 seconds"), (30, "30 seconds"), (60, "1 minute"), (300, "5 minutes"), (0, "Never")]
+
+    private func idleLabel(_ seconds: Int) -> String {
+        switch seconds {
+        case 10: return "10s"
+        case 30: return "30s"
+        case 60: return "1m"
+        case 300: return "5m"
+        default: return "Never"
+        }
+    }
+
+    private func resetIdleTimer() {
+        idleWork?.cancel()
+        let timeout = store.idleTimeout
+        guard timeout > 0 else { idleWork = nil; return }
+        let work = DispatchWorkItem {
+            if player.isPlaying && stack.last?.screen != .nowPlaying {
+                pushNowPlaying()
+            }
+        }
+        idleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(timeout), execute: work)
     }
 
     private func select() {
@@ -326,6 +368,9 @@ struct ContentView: View {
             store.toggleHaptics()
         case .toggleClick:
             store.toggleClick()
+        case .idle(let seconds):
+            store.setIdle(seconds)
+            resetIdleTimer()
         case .newPlaylist:
             promptName { store.createPlaylist(name: $0) }
         case .newPlaylistAdd:
