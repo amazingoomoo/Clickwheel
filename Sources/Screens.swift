@@ -45,6 +45,7 @@ enum WAction {
 struct WRow {
     var label: String
     var trackPath: String? = nil
+    var artKey: String? = nil
     var editPlaylist: Int? = nil
     var trailing: RowTrailing = .none
     var action: WAction
@@ -59,7 +60,10 @@ struct RowView: View {
     let store: Store
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            if let key = row.artKey {
+                ThumbnailView(path: key)
+            }
             Text(row.label)
                 .font(.system(size: 14))
                 .lineLimit(1)

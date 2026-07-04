@@ -144,9 +144,9 @@ struct ContentView: View {
 
     private func trackRow(_ t: Track, edit: Int?) -> WRow {
         if let e = edit {
-            return WRow(label: t.title, trackPath: t.relativePath, editPlaylist: e, action: .toggleMember(e, t.relativePath))
+            return WRow(label: t.title, trackPath: t.relativePath, artKey: t.relativePath, editPlaylist: e, action: .toggleMember(e, t.relativePath))
         } else {
-            return WRow(label: t.title, trackPath: t.relativePath, action: .playFrom)
+            return WRow(label: t.title, trackPath: t.relativePath, artKey: t.relativePath, action: .playFrom)
         }
     }
 
@@ -169,7 +169,7 @@ struct ContentView: View {
         case .albums:
             var r: [WRow] = []
             if e.edit == nil { r.append(WRow(label: "Shuffle All", action: .shuffle(library.tracks))) }
-            for a in library.albums { r.append(WRow(label: a, action: .go(.albumTracks(a), e.edit))) }
+            for a in library.albums { r.append(WRow(label: a, artKey: library.albumArtKey[a], action: .go(.albumTracks(a), e.edit))) }
             return r
         case .albumTracks(let album):
             let ts = library.tracksInAlbum(album)
@@ -180,7 +180,7 @@ struct ContentView: View {
         case .artists:
             var r: [WRow] = []
             if e.edit == nil { r.append(WRow(label: "Shuffle All", action: .shuffle(library.tracks))) }
-            for a in library.artists { r.append(WRow(label: a, action: .go(.artistTracks(a), e.edit))) }
+            for a in library.artists { r.append(WRow(label: a, artKey: library.artistArtKey[a], action: .go(.artistTracks(a), e.edit))) }
             return r
         case .artistTracks(let artist):
             let ts = library.tracksByArtist(artist)

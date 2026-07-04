@@ -6,6 +6,8 @@ final class Library: ObservableObject {
     @Published var tracks: [Track] = []
     @Published var albums: [String] = []
     @Published var artists: [String] = []
+    var albumArtKey: [String: String] = [:]
+    var artistArtKey: [String: String] = [:]
 
     private let audioExtensions: Set<String> = ["mp3", "m4a", "aac", "alac", "wav", "aif", "aiff", "caf", "m4b", "flac"]
 
@@ -24,15 +26,27 @@ final class Library: ObservableObject {
 
     static let musicFolderPath = "/var/mobile/Media/ClickWheel"
 
+    // Extra folders to look in (only scanned if they exist).
+    static let extraMusicPaths = [
+        "/var/mobile/Media/iTunes_Control/Music",
+        "/var/mobile/Media/Downloads"
+    ]
+
     func scan() {
         let fm = FileManager.default
         let external = URL(fileURLWithPath: Library.musicFolderPath, isDirectory: true)
         // With the filesystem entitlement, create the folder so it's visible over USB in 3uTools.
         try? fm.createDirectory(at: external, withIntermediateDirectories: true)
 
+        var roots: [URL] = [external]
+        for p in Library.extraMusicPaths where fm.fileExists(atPath: p) {
+            roots.append(URL(fileURLWithPath: p, isDirectory: true))
+        }
+        roots.append(Library.documentsURL)
+
         var found: [Track] = []
         var seen = Set<String>()
-        for root in [external, Library.documentsURL] {
+        for root in roots {
             guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
             for case let url as URL in enumerator where audioExtensions.contains(url.pathExtension.lowercased()) {
                 if seen.insert(url.path).inserted {
@@ -78,12 +92,20 @@ final class Library: ObservableObject {
     private func rebuildGroups() {
         var albumSet = Set<String>()
         var artistSet = Set<String>()
+        var albumArt: [String: String] = [:]
+        var artistArt: [String: String] = [:]
         for t in tracks {
             albumSet.insert(t.album)
-            if !t.artist.isEmpty { artistSet.insert(t.artist) }
+            if albumArt[t.album] == nil { albumArt[t.album] = t.relativePath }
+            if !t.artist.isEmpty {
+                artistSet.insert(t.artist)
+                if artistArt[t.artist] == nil { artistArt[t.artist] = t.relativePath }
+            }
         }
         albums = albumSet.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
         artists = artistSet.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        albumArtKey = albumArt
+        artistArtKey = artistArt
     }
 
     static func cleanName(_ url: URL) -> String {
