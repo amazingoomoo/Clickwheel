@@ -33,6 +33,8 @@ enum WAction {
     case theme(String)
     case wheel(String)
     case toggleSymbols
+    case toggleHaptics
+    case toggleClick
     case newPlaylist
     case newPlaylistAdd
     case addToPlaylist(Int)

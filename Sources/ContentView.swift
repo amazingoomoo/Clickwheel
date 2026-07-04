@@ -20,9 +20,9 @@ struct ContentView: View {
             let W = geo.size.width
             let H = geo.size.height
             let big = store.wheelStyle == "large"
-            let gap = max(CGFloat(14), W * 0.045)
-            let wheelD: CGFloat = big ? (W - 2 * gap) : (W * 0.42).rounded()
-            let regionH: CGFloat = big ? (wheelD + gap) : max((H * 0.32).rounded(), wheelD + 12)
+            let wheelD: CGFloat = big ? (W * 0.85).rounded() : (W * 0.42).rounded()
+            let sideGap = (W - wheelD) / 2
+            let regionH: CGFloat = big ? (wheelD + sideGap) : max((H * 0.32).rounded(), wheelD + 12)
             let contentH = max(0, H - regionH)
             let wheelAlign: Alignment = store.wheelStyle == "small-bottom" ? .bottom
                 : (store.wheelStyle == "small-mid" ? .center : .top)
@@ -227,7 +227,9 @@ struct ContentView: View {
             return [
                 WRow(label: "Theme", action: .go(.themeList, nil)),
                 WRow(label: "Wheel", action: .go(.wheelList, nil)),
-                WRow(label: "Background Symbols", trailing: .value(store.symbolsOn ? "On" : "Off"), action: .toggleSymbols)
+                WRow(label: "Background Symbols", trailing: .value(store.symbolsOn ? "On" : "Off"), action: .toggleSymbols),
+                WRow(label: "Haptics", trailing: .value(store.hapticsOn ? "On" : "Off"), action: .toggleHaptics),
+                WRow(label: "Wheel Click", trailing: .value(store.clickOn ? "On" : "Off"), action: .toggleClick)
             ]
         case .themeList:
             return Themes.order.map { key in
@@ -244,6 +246,7 @@ struct ContentView: View {
     // MARK: - Wheel dispatch
 
     private func scroll(_ dir: Int) {
+        Haptics.tick(haptic: store.hapticsOn, click: store.clickOn)
         let entry = stack[stack.count - 1]
         if entry.screen == .nowPlaying {
             switch player.mode {
@@ -311,6 +314,10 @@ struct ContentView: View {
             store.setWheel(style)
         case .toggleSymbols:
             store.toggleSymbols()
+        case .toggleHaptics:
+            store.toggleHaptics()
+        case .toggleClick:
+            store.toggleClick()
         case .newPlaylist:
             promptName { store.createPlaylist(name: $0) }
         case .newPlaylistAdd:

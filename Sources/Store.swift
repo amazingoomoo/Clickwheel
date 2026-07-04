@@ -7,6 +7,8 @@ final class Store: ObservableObject {
     @Published var themeKey: String = "blue"
     @Published var wheelStyle: String = "large"       // small-top | small-mid | small-bottom | large
     @Published var symbolsOn: Bool = true
+    @Published var hapticsOn: Bool = true
+    @Published var clickOn: Bool = false
 
     private let defaults = UserDefaults.standard
 
@@ -46,6 +48,8 @@ final class Store: ObservableObject {
     func setTheme(_ key: String) { themeKey = key; save() }
     func setWheel(_ style: String) { wheelStyle = style; save() }
     func toggleSymbols() { symbolsOn.toggle(); save() }
+    func toggleHaptics() { hapticsOn.toggle(); save() }
+    func toggleClick() { clickOn.toggle(); save() }
 
     private func save() {
         defaults.set(Array(favourites), forKey: "cw_favourites")
@@ -53,6 +57,8 @@ final class Store: ObservableObject {
         defaults.set(themeKey, forKey: "cw_theme")
         defaults.set(wheelStyle, forKey: "cw_wheel")
         defaults.set(symbolsOn, forKey: "cw_symbols")
+        defaults.set(hapticsOn, forKey: "cw_haptics")
+        defaults.set(clickOn, forKey: "cw_click")
     }
 
     private func load() {
@@ -64,5 +70,7 @@ final class Store: ObservableObject {
         themeKey = defaults.string(forKey: "cw_theme") ?? "blue"
         wheelStyle = defaults.string(forKey: "cw_wheel") ?? "large"
         symbolsOn = (defaults.object(forKey: "cw_symbols") as? Bool) ?? true
+        hapticsOn = (defaults.object(forKey: "cw_haptics") as? Bool) ?? true
+        clickOn = (defaults.object(forKey: "cw_click") as? Bool) ?? false
     }
 }
