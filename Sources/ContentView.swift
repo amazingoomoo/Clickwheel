@@ -20,19 +20,21 @@ struct ContentView: View {
             let W = geo.size.width
             let H = geo.size.height
             let style = store.wheelStyle
+            let smallStyle = style.hasPrefix("small")
+            let availH = H - (smallStyle ? CGFloat(40) : 0)
             let wheelD: CGFloat = style == "large" ? (W * 0.85).rounded()
                 : style == "medium" ? (W * 0.53).rounded()
                 : (W * 0.42).rounded()
             let sideGap = (W - wheelD) / 2
             let regionH: CGFloat = style == "large" ? (wheelD + sideGap)
-                : style == "medium" ? max((H * 0.34).rounded(), wheelD + 20)
-                : max((H * 0.30).rounded(), wheelD + 12)
+                : style == "medium" ? max((availH * 0.34).rounded(), wheelD + 20)
+                : max((availH * 0.30).rounded(), wheelD + 12)
             let wheelAlign: Alignment = style == "large" ? .top
                 : style == "medium" ? .center
                 : (style == "small-top" ? .top : (style == "small-bottom" ? .bottom : .center))
-            let contentH = max(0, H - regionH)
+            let contentH = max(0, availH - regionH)
 
-            ZStack {
+            ZStack(alignment: .top) {
                 theme.bg.ignoresSafeArea()
 
                 VStack(spacing: 0) {
