@@ -139,11 +139,11 @@ struct ListScreen: View {
                 if hasMore {
                     ZStack(alignment: .bottom) {
                         LinearGradient(colors: [theme.bg.opacity(0), theme.bg], startPoint: .top, endPoint: .bottom)
-                            .frame(height: 46)
+                            .frame(height: 68)
                         WideChevron()
-                            .stroke(theme.muted, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                            .frame(width: 42, height: 9)
-                            .padding(.bottom, 6)
+                            .stroke(theme.accent, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                            .frame(width: 60, height: 14)
+                            .padding(.bottom, 9)
                     }
                     .allowsHitTesting(false)
                 }
