@@ -28,7 +28,6 @@ final class Library: ObservableObject {
 
     // Extra folders to look in (only scanned if they exist).
     static let extraMusicPaths = [
-        "/var/mobile/Media/iTunes_Control/Music",
         "/var/mobile/Media/Downloads"
     ]
 
@@ -65,25 +64,36 @@ final class Library: ObservableObject {
     private func loadMetadata(for list: [Track]) {
         DispatchQueue.global(qos: .userInitiated).async {
             var updated = list
+            var processed = 0
             for i in updated.indices {
-                let asset = AVURLAsset(url: updated[i].url)
-                for item in asset.commonMetadata {
-                    guard let key = item.commonKey else { continue }
-                    switch key {
-                    case .commonKeyTitle:
-                        if let s = item.stringValue, !s.isEmpty { updated[i].title = s }
-                    case .commonKeyArtist:
-                        if let s = item.stringValue, !s.isEmpty { updated[i].artist = s }
-                    case .commonKeyAlbumName:
-                        if let s = item.stringValue, !s.isEmpty { updated[i].album = s }
-                    default:
-                        break
+                autoreleasepool {
+                    let asset = AVURLAsset(url: updated[i].url)
+                    for item in asset.commonMetadata {
+                        guard let key = item.commonKey else { continue }
+                        switch key {
+                        case .commonKeyTitle:
+                            if let s = item.stringValue, !s.isEmpty { updated[i].title = s }
+                        case .commonKeyArtist:
+                            if let s = item.stringValue, !s.isEmpty { updated[i].artist = s }
+                        case .commonKeyAlbumName:
+                            if let s = item.stringValue, !s.isEmpty { updated[i].album = s }
+                        default:
+                            break
+                        }
+                    }
+                }
+                processed += 1
+                if processed % 150 == 0 {
+                    let snapshot = updated.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+                    DispatchQueue.main.async {
+                        self.tracks = snapshot
+                        self.rebuildGroups()
                     }
                 }
             }
-            updated.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            let final = updated.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
             DispatchQueue.main.async {
-                self.tracks = updated
+                self.tracks = final
                 self.rebuildGroups()
             }
         }

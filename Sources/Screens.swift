@@ -120,6 +120,9 @@ struct ListScreen: View {
             let rowH: CGFloat = 30
             let headerH: CGFloat = 30
             let maxRows = max(1, Int((geo.size.height - headerH) / rowH))
+            let start = windowStart(maxRows)
+            let end = min(start + maxRows, rows.count)
+            let hasMore = end < rows.count
             VStack(spacing: 0) {
                 Text(title)
                     .font(.system(size: 13, weight: .bold))
@@ -127,12 +130,23 @@ struct ListScreen: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: headerH)
 
-                let start = windowStart(maxRows)
-                let end = min(start + maxRows, rows.count)
                 ForEach(Array(start..<end), id: \.self) { i in
                     RowView(row: rows[i], selected: i == sel, store: store)
                 }
                 Spacer(minLength: 0)
+            }
+            .overlay(alignment: .bottom) {
+                if hasMore {
+                    ZStack(alignment: .bottom) {
+                        LinearGradient(colors: [theme.bg.opacity(0), theme.bg], startPoint: .top, endPoint: .bottom)
+                            .frame(height: 46)
+                        WideChevron()
+                            .stroke(theme.muted, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                            .frame(width: 42, height: 9)
+                            .padding(.bottom, 6)
+                    }
+                    .allowsHitTesting(false)
+                }
             }
         }
     }
@@ -140,6 +154,17 @@ struct ListScreen: View {
     private func windowStart(_ visible: Int) -> Int {
         if sel < visible { return 0 }
         return min(sel - visible + 1, max(0, rows.count - visible))
+    }
+}
+
+// A wide, shallow downward chevron used to signal "more below".
+struct WideChevron: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        return p
     }
 }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import ImageIO
 
 final class ArtworkCache {
     static let shared = ArtworkCache()
@@ -27,21 +28,28 @@ final class ArtworkCache {
     }
 
     private static func load(_ url: URL, maxDim: CGFloat = 44) -> UIImage? {
-        let asset = AVURLAsset(url: url)
-        for item in asset.commonMetadata where item.commonKey == .commonKeyArtwork {
-            if let data = item.dataValue, let full = UIImage(data: data) {
-                return downscale(full, maxDim: maxDim)
+        return autoreleasepool { () -> UIImage? in
+            let asset = AVURLAsset(url: url)
+            for item in asset.commonMetadata where item.commonKey == .commonKeyArtwork {
+                if let data = item.dataValue {
+                    return thumbnail(from: data, maxPixel: maxDim * UIScreen.main.scale)
+                }
             }
+            return nil
         }
-        return nil
     }
 
-    private static func downscale(_ image: UIImage, maxDim: CGFloat) -> UIImage {
-        let size = image.size
-        let factor = min(maxDim / max(size.width, 1), maxDim / max(size.height, 1), 1)
-        let newSize = CGSize(width: max(1, size.width * factor), height: max(1, size.height * factor))
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+    private static func thumbnail(from data: Data, maxPixel: CGFloat) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int(maxPixel)
+        ]
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+        return UIImage(cgImage: cg)
     }
 }
 
