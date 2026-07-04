@@ -24,18 +24,12 @@ struct ContentView: View {
                 : style == "medium" ? (W * 0.53).rounded()
                 : (W * 0.42).rounded()
             let sideGap = (W - wheelD) / 2
-            let regionH: CGFloat
-            let wheelAlign: Alignment
-            if style == "large" {
-                regionH = wheelD + sideGap
-                wheelAlign = .top
-            } else if style == "medium" {
-                regionH = max((H * 0.34).rounded(), wheelD + 20)
-                wheelAlign = .center
-            } else {
-                regionH = max((H * 0.30).rounded(), wheelD + 12)
-                wheelAlign = style == "small-top" ? .top : (style == "small-bottom" ? .bottom : .center)
-            }
+            let regionH: CGFloat = style == "large" ? (wheelD + sideGap)
+                : style == "medium" ? max((H * 0.34).rounded(), wheelD + 20)
+                : max((H * 0.30).rounded(), wheelD + 12)
+            let wheelAlign: Alignment = style == "large" ? .top
+                : style == "medium" ? .center
+                : (style == "small-top" ? .top : (style == "small-bottom" ? .bottom : .center))
             let contentH = max(0, H - regionH)
 
             ZStack {
