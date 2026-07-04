@@ -11,6 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-15
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,6 +35,25 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
             build
+
+      - name: Fakesign with entitlements (TrollStore)
+        run: |
+          set -e
+          brew install ldid
+          APP="build/Build/Products/Release-iphoneos/ClickWheel.app"
+          BIN="$APP/ClickWheel"
+          echo "Applying entitlements with ldid..."
+          ldid -S"$GITHUB_WORKSPACE/entitlements.plist" "$BIN"
+          echo "=== Entitlements embedded in the binary: ==="
+          ldid -e "$BIN" || true
+          if ldid -e "$BIN" | grep -q "no-sandbox"; then
+            echo "OK: no-sandbox entitlement is embedded."
+          else
+            echo "ldid did not embed entitlements — falling back to codesign."
+            codesign --force --sign - --entitlements "$GITHUB_WORKSPACE/entitlements.plist" "$BIN"
+            echo "=== After codesign fallback: ==="
+            codesign -d --entitlements - "$BIN" 2>&1 || true
+          fi
 
       - name: Package into IPA
         run: |
