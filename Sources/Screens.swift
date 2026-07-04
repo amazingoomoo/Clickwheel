@@ -148,25 +148,18 @@ struct NowPlayingScreen: View {
 
     var body: some View {
         GeometryReader { geo in
-            let infoH: CGFloat = 96
-            let side = max(0, min(geo.size.width, geo.size.height - infoH))
+            let side = max(0, min(geo.size.width, geo.size.height - 34))
             VStack(spacing: 0) {
                 artwork(side: side)
-                VStack(spacing: 7) {
+                VStack(spacing: 2) {
                     Text(player.current?.title ?? "\u{2014}")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(theme.fg)
                         .lineLimit(1)
-                    if let artist = player.current?.artist, !artist.isEmpty {
-                        Text(artist)
-                            .font(.system(size: 12))
-                            .foregroundColor(theme.muted)
-                            .lineLimit(1)
-                    }
-                    controlSlot
+                    controlRow
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.horizontal, 14)
+                .padding(.top, 4)
                 Spacer(minLength: 0)
             }
         }
@@ -191,49 +184,46 @@ struct NowPlayingScreen: View {
         .frame(maxWidth: .infinity)
     }
 
-    @ViewBuilder private var controlSlot: some View {
+    @ViewBuilder private var controlRow: some View {
         if player.mode == .favourite {
             let on = player.current.map { store.isFavourite($0.relativePath) } ?? false
             Image(systemName: on ? "star.fill" : "star")
-                .font(.system(size: 40))
+                .font(.system(size: 16))
                 .foregroundColor(on ? favouriteGold : theme.muted)
-                .padding(.top, 4)
         } else if player.mode == .volume && player.volumeVisible {
-            HStack(spacing: 10) {
-                Image(systemName: "speaker.fill").font(.system(size: 12)).foregroundColor(theme.muted)
+            HStack(spacing: 8) {
+                Image(systemName: "speaker.fill").font(.system(size: 9)).foregroundColor(theme.muted)
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Capsule().fill(theme.divider)
                         Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(player.volume))
                     }
                 }
-                .frame(height: 5)
-                Image(systemName: "speaker.wave.3.fill").font(.system(size: 12)).foregroundColor(theme.muted)
+                .frame(height: 4)
+                Image(systemName: "speaker.wave.3.fill").font(.system(size: 9)).foregroundColor(theme.muted)
             }
-            .frame(height: 22)
-            .padding(.top, 6)
+            .frame(height: 16)
         } else {
-            VStack(spacing: 4) {
+            VStack(spacing: 1) {
                 GeometryReader { g in
                     ZStack(alignment: .leading) {
                         Capsule().fill(theme.divider)
                         Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
                         if player.mode == .scrub {
-                            Circle().fill(theme.accent).frame(width: 14, height: 14)
-                                .offset(x: g.size.width * CGFloat(fraction) - 7)
+                            Circle().fill(theme.accent).frame(width: 10, height: 10)
+                                .offset(x: g.size.width * CGFloat(fraction) - 5)
                         }
                     }
                 }
-                .frame(height: player.mode == .scrub ? 7 : 5)
+                .frame(height: player.mode == .scrub ? 6 : 4)
                 HStack {
                     Text(timeString(player.currentTime))
                     Spacer()
                     Text("-" + timeString(max(0, player.duration - player.currentTime)))
                 }
-                .font(.system(size: 10))
+                .font(.system(size: 8))
                 .foregroundColor(theme.muted)
             }
-            .padding(.top, 6)
         }
     }
 

@@ -22,18 +22,22 @@ final class Library: ObservableObject {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
+    static let musicFolderPath = "/var/mobile/Media/ClickWheel"
+
     func scan() {
-        let docs = Library.documentsURL
-        let base = docs.path
+        let fm = FileManager.default
+        let external = URL(fileURLWithPath: Library.musicFolderPath, isDirectory: true)
+        // With the filesystem entitlement, create the folder so it's visible over USB in 3uTools.
+        try? fm.createDirectory(at: external, withIntermediateDirectories: true)
+
         var found: [Track] = []
-        if let enumerator = FileManager.default.enumerator(at: docs, includingPropertiesForKeys: nil) {
+        var seen = Set<String>()
+        for root in [external, Library.documentsURL] {
+            guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
             for case let url as URL in enumerator where audioExtensions.contains(url.pathExtension.lowercased()) {
-                var rel = url.path
-                if rel.hasPrefix(base) {
-                    rel = String(rel.dropFirst(base.count))
-                    if rel.hasPrefix("/") { rel = String(rel.dropFirst()) }
+                if seen.insert(url.path).inserted {
+                    found.append(Track(url: url, relativePath: url.path, title: Library.cleanName(url), artist: "", album: "Unknown Album"))
                 }
-                found.append(Track(url: url, relativePath: rel, title: Library.cleanName(url), artist: "", album: "Unknown Album"))
             }
         }
         found.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }

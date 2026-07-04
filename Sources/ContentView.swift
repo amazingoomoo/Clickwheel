@@ -19,13 +19,24 @@ struct ContentView: View {
         GeometryReader { geo in
             let W = geo.size.width
             let H = geo.size.height
-            let big = store.wheelStyle == "large"
-            let wheelD: CGFloat = big ? (W * 0.85).rounded() : (W * 0.42).rounded()
+            let style = store.wheelStyle
+            let wheelD: CGFloat = style == "large" ? (W * 0.85).rounded()
+                : style == "medium" ? (W * 0.53).rounded()
+                : (W * 0.42).rounded()
             let sideGap = (W - wheelD) / 2
-            let regionH: CGFloat = big ? (wheelD + sideGap) : max((H * 0.32).rounded(), wheelD + 12)
+            let regionH: CGFloat
+            let wheelAlign: Alignment
+            if style == "large" {
+                regionH = wheelD + sideGap
+                wheelAlign = .top
+            } else if style == "medium" {
+                regionH = max((H * 0.34).rounded(), wheelD + 20)
+                wheelAlign = .center
+            } else {
+                regionH = max((H * 0.30).rounded(), wheelD + 12)
+                wheelAlign = style == "small-top" ? .top : (style == "small-bottom" ? .bottom : .center)
+            }
             let contentH = max(0, H - regionH)
-            let wheelAlign: Alignment = store.wheelStyle == "small-bottom" ? .bottom
-                : (store.wheelStyle == "small-mid" ? .center : .top)
 
             ZStack {
                 theme.bg.ignoresSafeArea()
@@ -60,6 +71,7 @@ struct ContentView: View {
                 if showNameEntry { nameOverlay }
             }
         }
+        .ignoresSafeArea(.container, edges: .bottom)
         .environment(\.appTheme, theme)
         .preferredColorScheme(store.themeKey == "auto" ? nil : (theme.isDark ? .dark : .light))
     }
@@ -236,7 +248,7 @@ struct ContentView: View {
                 WRow(label: Themes.labels[key] ?? key, trailing: .checkmark(key == store.themeKey), action: .theme(key))
             }
         case .wheelList:
-            let opts = [("small-top", "Small (top)"), ("small-mid", "Small (middle)"), ("small-bottom", "Small (bottom)"), ("large", "Large")]
+            let opts = [("small-top", "Small (top)"), ("small-mid", "Small (middle)"), ("small-bottom", "Small (bottom)"), ("medium", "Medium"), ("large", "Large")]
             return opts.map { WRow(label: $0.1, trailing: .checkmark($0.0 == store.wheelStyle), action: .wheel($0.0)) }
         case .nowPlaying:
             return []
