@@ -2,6 +2,13 @@ import Foundation
 import Combine
 import AVFoundation
 
+struct CachedMeta: Codable {
+    var mtime: Double
+    var title: String
+    var artist: String
+    var album: String
+}
+
 final class Library: ObservableObject {
     @Published var tracks: [Track] = []
     @Published var albums: [String] = []
@@ -14,6 +21,20 @@ final class Library: ObservableObject {
     static var documentsURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
+    static let musicFolderPath = "/var/mobile/Media/ClickWheel"
+    static let extraMusicPaths = [
+        "/var/mobile/Media/iTunes_Control/Music",
+        "/var/mobile/Media/Downloads"
+    ]
+    private static let cachePath = "/var/mobile/Media/ClickWheel/.cw_metacache.json"
+
+    private var metaCache: [String: CachedMeta] = [:]
+
+    private struct FileInfo {
+        let url: URL
+        let path: String
+        let mtime: Double
+    }
 
     init() { scan() }
 
@@ -24,17 +45,9 @@ final class Library: ObservableObject {
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
     }
 
-    static let musicFolderPath = "/var/mobile/Media/ClickWheel"
-
-    // Extra folders to look in (only scanned if they exist).
-    static let extraMusicPaths = [
-        "/var/mobile/Media/Downloads"
-    ]
-
     func scan() {
         let fm = FileManager.default
         let external = URL(fileURLWithPath: Library.musicFolderPath, isDirectory: true)
-        // With the filesystem entitlement, create the folder so it's visible over USB in 3uTools.
         try? fm.createDirectory(at: external, withIntermediateDirectories: true)
 
         var roots: [URL] = [external]
@@ -43,59 +56,103 @@ final class Library: ObservableObject {
         }
         roots.append(Library.documentsURL)
 
-        var found: [Track] = []
+        loadCache()
+        let cache = metaCache
+
+        var files: [FileInfo] = []
         var seen = Set<String>()
         for root in roots {
-            guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: nil) else { continue }
+            guard let enumerator = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey]) else { continue }
             for case let url as URL in enumerator where audioExtensions.contains(url.pathExtension.lowercased()) {
                 if seen.insert(url.path).inserted {
-                    found.append(Track(url: url, relativePath: url.path, title: Library.cleanName(url), artist: "", album: "Unknown Album"))
+                    let mtime = ((try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate)?.timeIntervalSince1970 ?? 0
+                    files.append(FileInfo(url: url, path: url.path, mtime: mtime))
                 }
             }
         }
-        found.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+
+        var built: [Track] = []
+        var toRead: [FileInfo] = []
+        for f in files {
+            if let c = cache[f.path], abs(c.mtime - f.mtime) < 1 {
+                built.append(Track(url: f.url, relativePath: f.path, title: c.title, artist: c.artist, album: c.album))
+            } else {
+                built.append(Track(url: f.url, relativePath: f.path, title: Library.cleanName(f.url), artist: "", album: "Unknown Album"))
+                toRead.append(f)
+            }
+        }
+        built.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
         DispatchQueue.main.async {
-            self.tracks = found
+            self.tracks = built
             self.rebuildGroups()
         }
-        loadMetadata(for: found)
+
+        if !toRead.isEmpty { readMetadata(for: toRead) }
     }
 
-    private func loadMetadata(for list: [Track]) {
+    private func readMetadata(for files: [FileInfo]) {
         DispatchQueue.global(qos: .userInitiated).async {
-            var updated = list
+            var pending: [String: CachedMeta] = [:]
             var processed = 0
-            for i in updated.indices {
+            for f in files {
                 autoreleasepool {
-                    let asset = AVURLAsset(url: updated[i].url)
+                    let asset = AVURLAsset(url: f.url)
+                    var title = Library.cleanName(f.url)
+                    var artist = ""
+                    var album = "Unknown Album"
                     for item in asset.commonMetadata {
                         guard let key = item.commonKey else { continue }
                         switch key {
                         case .commonKeyTitle:
-                            if let s = item.stringValue, !s.isEmpty { updated[i].title = s }
+                            if let s = item.stringValue, !s.isEmpty { title = s }
                         case .commonKeyArtist:
-                            if let s = item.stringValue, !s.isEmpty { updated[i].artist = s }
+                            if let s = item.stringValue, !s.isEmpty { artist = s }
                         case .commonKeyAlbumName:
-                            if let s = item.stringValue, !s.isEmpty { updated[i].album = s }
+                            if let s = item.stringValue, !s.isEmpty { album = s }
                         default:
                             break
                         }
                     }
+                    pending[f.path] = CachedMeta(mtime: f.mtime, title: title, artist: artist, album: album)
                 }
                 processed += 1
                 if processed % 150 == 0 {
-                    let snapshot = updated.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-                    DispatchQueue.main.async {
-                        self.tracks = snapshot
-                        self.rebuildGroups()
-                    }
+                    let batch = pending
+                    pending.removeAll()
+                    DispatchQueue.main.async { self.applyMeta(batch, save: true) }
                 }
             }
-            let final = updated.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-            DispatchQueue.main.async {
-                self.tracks = final
-                self.rebuildGroups()
+            let last = pending
+            DispatchQueue.main.async { self.applyMeta(last, save: true) }
+        }
+    }
+
+    private func applyMeta(_ meta: [String: CachedMeta], save: Bool) {
+        if !meta.isEmpty {
+            for (path, m) in meta { metaCache[path] = m }
+            tracks = tracks.map { t in
+                guard let m = meta[t.relativePath] else { return t }
+                var nt = t
+                nt.title = m.title
+                nt.artist = m.artist
+                nt.album = m.album
+                return nt
             }
+            tracks.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+            rebuildGroups()
+        }
+        if save { saveCache() }
+    }
+
+    private func loadCache() {
+        guard let data = FileManager.default.contents(atPath: Library.cachePath),
+              let decoded = try? JSONDecoder().decode([String: CachedMeta].self, from: data) else { return }
+        metaCache = decoded
+    }
+
+    private func saveCache() {
+        if let data = try? JSONEncoder().encode(metaCache) {
+            try? data.write(to: URL(fileURLWithPath: Library.cachePath))
         }
     }
 
