@@ -49,45 +49,18 @@ struct ClickWheel: View {
                     .fill(theme.wheel)
                     .overlay(Circle().stroke(theme.divider, lineWidth: 1))
 
-                VStack(spacing: 0) {
-                    VStack(spacing: s * 0.01) {
-                        if let tg = topGlyph {
-                            Image(systemName: tg).font(.system(size: s * 0.075))
-                        } else {
-                            Text("MENU").font(.system(size: s * 0.072, weight: .semibold))
-                        }
-                        if let tl = topLabel {
-                            Text(tl).font(.system(size: s * 0.052, weight: .bold))
-                        }
-                    }
-                    Spacer()
-                    VStack(spacing: s * 0.01) {
-                        if let bl = bottomLabel {
-                            Text(bl).font(.system(size: s * 0.052, weight: .bold))
-                        }
-                        Image(systemName: bottomGlyph).font(.system(size: s * 0.075))
-                    }
-                }
-                .foregroundColor(tint ?? theme.wheelLabel)
-                .padding(.vertical, s * 0.06)
-
-                HStack(spacing: 0) {
-                    VStack(spacing: s * 0.01) {
-                        Image(systemName: leftGlyph).font(.system(size: s * 0.075))
-                        if let ll = leftLabel {
-                            Text(ll).font(.system(size: s * 0.052, weight: .bold))
-                        }
-                    }
-                    Spacer()
-                    VStack(spacing: s * 0.01) {
-                        Image(systemName: rightGlyph).font(.system(size: s * 0.075))
-                        if let rl = rightLabel {
-                            Text(rl).font(.system(size: s * 0.052, weight: .bold))
-                        }
-                    }
-                }
-                .foregroundColor(tint ?? theme.wheelLabel)
-                .padding(.horizontal, s * 0.07)
+                buttonLabel(glyph: topGlyph, isMenu: topGlyph == nil, label: topLabel, s: s)
+                    .foregroundColor(tint ?? theme.wheelLabel)
+                    .offset(y: -s * 0.34)
+                buttonLabel(glyph: bottomGlyph, isMenu: false, label: bottomLabel, s: s)
+                    .foregroundColor(tint ?? theme.wheelLabel)
+                    .offset(y: s * 0.34)
+                buttonLabel(glyph: leftGlyph, isMenu: false, label: leftLabel, s: s)
+                    .foregroundColor(tint ?? theme.wheelLabel)
+                    .offset(x: -s * 0.34)
+                buttonLabel(glyph: rightGlyph, isMenu: false, label: rightLabel, s: s)
+                    .foregroundColor(tint ?? theme.wheelLabel)
+                    .offset(x: s * 0.34)
 
                 Circle()
                     .fill(theme.wheelC)
@@ -166,6 +139,19 @@ struct ClickWheel: View {
             )
         }
         .frame(width: diameter, height: diameter)
+    }
+
+    private func buttonLabel(glyph: String?, isMenu: Bool, label: String?, s: CGFloat) -> some View {
+        VStack(spacing: s * 0.01) {
+            if isMenu {
+                Text("MENU").font(.system(size: s * 0.072, weight: .semibold))
+            } else if let g = glyph {
+                Image(systemName: g).font(.system(size: s * 0.075))
+            }
+            if let l = label {
+                Text(l).font(.system(size: s * 0.052, weight: .bold))
+            }
+        }
     }
 
     private func zoneFor(_ p: CGPoint, center: CGPoint, centerRadius: CGFloat) -> WheelZone {

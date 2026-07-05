@@ -33,6 +33,7 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var repeatMode: RepeatMode = .off
     @Published var crossfade: Int = 0            // 0, 2 or 4 seconds
     @Published var brightnessActive: Bool = false
+    @Published var npTextMode: Int = 0           // 0 title, 1 album, 2 artist
 
     private var audio: AVAudioPlayer?
     private var nextAudio: AVAudioPlayer?
@@ -83,6 +84,7 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     private func startCurrent() {
         cancelCrossfade()
+        npTextMode = 0
         guard let track = current else { return }
         do {
             let player = try AVAudioPlayer(contentsOf: track.url)

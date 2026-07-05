@@ -177,16 +177,32 @@ struct NowPlayingScreen: View {
     @ObservedObject var player: Player
     let store: Store
 
+    @State private var textOpacity: Double = 1
+    @State private var textResetWork: DispatchWorkItem?
+
     var body: some View {
         GeometryReader { geo in
             let side = max(0, min(geo.size.width, geo.size.height - 34))
             VStack(spacing: 0) {
                 artwork(side: side)
-                VStack(spacing: 2) {
-                    Text(player.current?.title ?? "\u{2014}")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(theme.fg)
-                        .lineLimit(1)
+                VStack(spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(timeString(player.currentTime))
+                            .font(.system(size: 9))
+                            .foregroundColor(theme.muted)
+                        Text(displayText)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(theme.fg)
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity)
+                            .multilineTextAlignment(.center)
+                            .opacity(textOpacity)
+                            .contentShape(Rectangle())
+                            .onTapGesture { cycleText() }
+                        Text("-" + timeString(max(0, player.duration - player.currentTime)))
+                            .font(.system(size: 9))
+                            .foregroundColor(theme.muted)
+                    }
                     controlRow
                 }
                 .padding(.horizontal, 14)
@@ -194,6 +210,39 @@ struct NowPlayingScreen: View {
                 Spacer(minLength: 0)
             }
         }
+    }
+
+    private var displayText: String {
+        let t = player.current
+        switch player.npTextMode {
+        case 1: return (t?.album).flatMap { $0.isEmpty ? nil : $0 } ?? "Unknown Album"
+        case 2: return (t?.artist).flatMap { $0.isEmpty ? nil : $0 } ?? "Unknown Artist"
+        default: return t?.title ?? "\u{2014}"
+        }
+    }
+
+    private func cycleText() {
+        withAnimation(.easeInOut(duration: 0.18)) { textOpacity = 0 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.19) {
+            player.npTextMode = (player.npTextMode + 1) % 3
+            withAnimation(.easeInOut(duration: 0.18)) { textOpacity = 1 }
+        }
+        scheduleTextReset()
+    }
+
+    private func scheduleTextReset() {
+        textResetWork?.cancel()
+        let work = DispatchWorkItem {
+            if player.npTextMode != 0 {
+                withAnimation(.easeInOut(duration: 0.18)) { textOpacity = 0 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.19) {
+                    player.npTextMode = 0
+                    withAnimation(.easeInOut(duration: 0.18)) { textOpacity = 1 }
+                }
+            }
+        }
+        textResetWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
     }
 
     private func artwork(side: CGFloat) -> some View {
@@ -235,28 +284,19 @@ struct NowPlayingScreen: View {
             }
             .frame(height: 16)
         } else {
-            VStack(spacing: 1) {
-                GeometryReader { g in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(theme.divider)
-                        Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
-                        if player.mode == .scrub {
-                            Circle().fill(theme.accent)
-                                .frame(width: 13, height: 13)
-                                .overlay(Circle().stroke(theme.bg, lineWidth: 2))
-                                .offset(x: g.size.width * CGFloat(fraction) - 6.5)
-                        }
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(theme.divider)
+                    Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
+                    if player.mode == .scrub {
+                        Circle().fill(theme.accent)
+                            .frame(width: 13, height: 13)
+                            .overlay(Circle().stroke(theme.bg, lineWidth: 2))
+                            .offset(x: g.size.width * CGFloat(fraction) - 6.5)
                     }
                 }
-                .frame(height: player.mode == .scrub ? 6 : 4)
-                HStack {
-                    Text(timeString(player.currentTime))
-                    Spacer()
-                    Text("-" + timeString(max(0, player.duration - player.currentTime)))
-                }
-                .font(.system(size: 8))
-                .foregroundColor(theme.muted)
             }
+            .frame(height: player.mode == .scrub ? 8 : 5)
         }
     }
 
