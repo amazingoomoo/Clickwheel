@@ -8,7 +8,6 @@ enum NowPlayingMode {
     case volume
     case options
     case scrub
-    case favourite
 }
 
 enum RepeatMode {
@@ -32,7 +31,6 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     @Published var repeatMode: RepeatMode = .off
     @Published var crossfade: Int = 0            // 0, 2 or 4 seconds
-    @Published var brightnessActive: Bool = false
     @Published var npTextMode: Int = 0           // 0 title, 1 album, 2 artist
 
     private var audio: AVAudioPlayer?
@@ -162,11 +160,9 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
         switch mode {
         case .volume: mode = .options
         case .options: mode = .scrub
-        case .scrub: mode = .favourite
-        case .favourite: mode = .volume
+        case .scrub: mode = .volume
         }
         volumeVisible = false
-        brightnessActive = false
     }
 
     func cycleRepeat() {
@@ -182,8 +178,6 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func cycleCrossfade() {
         crossfade = crossfade == 0 ? 2 : (crossfade == 2 ? 4 : 0)
     }
-
-    func toggleBrightness() { brightnessActive.toggle() }
 
     // MARK: - Timer / crossfade
 

@@ -10,7 +10,7 @@ final class Store: ObservableObject {
     @Published var hapticsOn: Bool = true
     @Published var clickOn: Bool = false
     @Published var idleTimeout: Int = 30              // seconds until returning to Now Playing; 0 = never
-    @Published var holdPlayAction: String = "screen"  // screen | lock
+    @Published var lockClock: String = "small"        // none | small | large
 
     private let defaults = UserDefaults.standard
 
@@ -53,7 +53,7 @@ final class Store: ObservableObject {
     func toggleHaptics() { hapticsOn.toggle(); save() }
     func toggleClick() { clickOn.toggle(); save() }
     func setIdle(_ seconds: Int) { idleTimeout = seconds; save() }
-    func setHoldPlay(_ action: String) { holdPlayAction = action; save() }
+    func setLockClock(_ style: String) { lockClock = style; save() }
 
     private func save() {
         defaults.set(Array(favourites), forKey: "cw_favourites")
@@ -64,7 +64,7 @@ final class Store: ObservableObject {
         defaults.set(hapticsOn, forKey: "cw_haptics")
         defaults.set(clickOn, forKey: "cw_click")
         defaults.set(idleTimeout, forKey: "cw_idle")
-        defaults.set(holdPlayAction, forKey: "cw_holdplay")
+        defaults.set(lockClock, forKey: "cw_lockclock")
     }
 
     private func load() {
@@ -79,6 +79,6 @@ final class Store: ObservableObject {
         hapticsOn = (defaults.object(forKey: "cw_haptics") as? Bool) ?? true
         clickOn = (defaults.object(forKey: "cw_click") as? Bool) ?? false
         idleTimeout = (defaults.object(forKey: "cw_idle") as? Int) ?? 30
-        holdPlayAction = defaults.string(forKey: "cw_holdplay") ?? "screen"
+        lockClock = defaults.string(forKey: "cw_lockclock") ?? "small"
     }
 }

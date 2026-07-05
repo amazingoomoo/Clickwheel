@@ -10,7 +10,7 @@ enum Screen: Equatable {
     case playlistTracks(Int)
     case plEdit(Int)
     case addToPlaylist(String)
-    case settings, themeList, wheelList, idleList, holdPlayList
+    case settings, themeList, wheelList, idleList, lockClockList, brightnessScreen
     case nowPlaying
 }
 
@@ -36,7 +36,7 @@ enum WAction {
     case toggleHaptics
     case toggleClick
     case idle(Int)
-    case holdPlay(String)
+    case lockClock(String)
     case newPlaylist
     case newPlaylistAdd
     case addToPlaylist(Int)
@@ -265,12 +265,7 @@ struct NowPlayingScreen: View {
     }
 
     @ViewBuilder private var controlRow: some View {
-        if player.mode == .favourite {
-            let on = player.current.map { store.isFavourite($0.relativePath) } ?? false
-            Image(systemName: on ? "star.fill" : "star")
-                .font(.system(size: 18))
-                .foregroundColor(on ? favouriteGold : theme.muted)
-        } else if player.mode == .volume && player.volumeVisible {
+        if player.mode == .volume && player.volumeVisible {
             HStack(spacing: 8) {
                 Image(systemName: "speaker.fill").font(.system(size: 9)).foregroundColor(theme.muted)
                 GeometryReader { g in
@@ -306,5 +301,72 @@ struct NowPlayingScreen: View {
     private func timeString(_ t: TimeInterval) -> String {
         let s = Int(t)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+// MARK: - Brightness (Settings)
+
+struct BrightnessScreen: View {
+    @Environment(\.appTheme) var theme
+    let level: CGFloat
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer()
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 40))
+                .foregroundColor(theme.accent)
+            GeometryReader { g in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(theme.divider)
+                    Capsule().fill(theme.accent).frame(width: g.size.width * max(0, min(1, level)))
+                }
+            }
+            .frame(height: 10)
+            .padding(.horizontal, 44)
+            Text("\(Int(level * 100))%")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(theme.fg)
+            Text("Turn the wheel to adjust")
+                .font(.system(size: 11))
+                .foregroundColor(theme.muted)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Lock clock (shown while the screen is dimmed)
+
+struct LockClock: View {
+    let large: Bool
+    @State private var now = Date()
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        Group {
+            if large {
+                VStack(spacing: 6) {
+                    Text(dateString(now))
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.white.opacity(0.6))
+                    Text(timeString(now))
+                        .font(.system(size: 70, weight: .thin, design: .rounded))
+                        .foregroundColor(.white)
+                }
+            } else {
+                Text(timeString(now))
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+        }
+        .onReceive(timer) { now = $0 }
+    }
+
+    private func timeString(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f.string(from: d)
+    }
+    private func dateString(_ d: Date) -> String {
+        let f = DateFormatter(); f.dateFormat = "EEEE, d MMMM"; return f.string(from: d)
     }
 }

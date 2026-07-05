@@ -24,6 +24,9 @@ struct ClickWheel: View {
     var leftLabel: String? = nil
     var rightLabel: String? = nil
     var tint: Color? = nil
+    var topColor: Color? = nil
+    var onTapFeedback: () -> Void = {}
+    var onHoldFeedback: () -> Void = {}
 
     @State private var lastAngle: Double? = nil
     @State private var accumulated: Double = 0
@@ -50,7 +53,7 @@ struct ClickWheel: View {
                     .overlay(Circle().stroke(theme.divider, lineWidth: 1))
 
                 buttonLabel(glyph: topGlyph, isMenu: topGlyph == nil, label: topLabel, s: s)
-                    .foregroundColor(tint ?? theme.wheelLabel)
+                    .foregroundColor(topColor ?? tint ?? theme.wheelLabel)
                     .offset(y: -s * 0.34)
                 buttonLabel(glyph: bottomGlyph, isMenu: false, label: bottomLabel, s: s)
                     .foregroundColor(tint ?? theme.wheelLabel)
@@ -92,6 +95,9 @@ struct ClickWheel: View {
                             if zone == .center || zone == .menu || zone == .play {
                                 let work = DispatchWorkItem {
                                     longFired = true
+                                    glowZone = zone
+                                    glowOpacity = 0.75
+                                    onHoldFeedback()
                                     switch zone {
                                     case .center: onLongCenter()
                                     case .menu: onLongMenu()
@@ -125,8 +131,13 @@ struct ClickWheel: View {
                     .onEnded { value in
                         dragging = false
                         longWork?.cancel()
-                        if moved || longFired { return }
+                        if longFired {
+                            withAnimation(.easeOut(duration: 0.4)) { glowOpacity = 0 }
+                            return
+                        }
+                        if moved { return }
                         let zone = zoneFor(value.location, center: center, centerRadius: centerRadius)
+                        onTapFeedback()
                         triggerGlow(zone)
                         switch zone {
                         case .center: onSelect()
