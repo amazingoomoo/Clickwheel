@@ -216,9 +216,7 @@ struct NowPlayingScreen: View {
     }
 
     @ViewBuilder private var controlRow: some View {
-        if player.mode == .options {
-            optionsDisplay
-        } else if player.mode == .favourite {
+        if player.mode == .favourite {
             let on = player.current.map { store.isFavourite($0.relativePath) } ?? false
             Image(systemName: on ? "star.fill" : "star")
                 .font(.system(size: 18))
@@ -259,30 +257,6 @@ struct NowPlayingScreen: View {
                 .font(.system(size: 8))
                 .foregroundColor(theme.muted)
             }
-        }
-    }
-
-    private var optionsDisplay: some View {
-        HStack(spacing: 14) {
-            optionChip("repeat", repeatText)
-            optionChip("shuffle", player.shuffle ? "On" : "Off")
-            optionChip("arrow.left.arrow.right", "\(player.crossfade)s")
-            optionChip("sun.max.fill", player.brightnessActive ? "Adjust" : "Tap")
-        }
-    }
-
-    private func optionChip(_ icon: String, _ value: String) -> some View {
-        VStack(spacing: 2) {
-            Image(systemName: icon).font(.system(size: 12)).foregroundColor(theme.accent)
-            Text(value).font(.system(size: 9)).foregroundColor(theme.fg)
-        }
-    }
-
-    private var repeatText: String {
-        switch player.repeatMode {
-        case .off: return "Off"
-        case .all: return "All"
-        case .one: return "One"
         }
     }
 

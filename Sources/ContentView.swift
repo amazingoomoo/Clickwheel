@@ -38,12 +38,17 @@ struct ContentView: View {
             let contentH = max(0, availH - regionH)
             let onNP = stack.last?.screen == .nowPlaying
             let isFav = player.current.map { store.isFavourite($0.relativePath) } ?? false
-            let topG: String? = (onNP && player.mode == .options) ? "sun.max.fill" : nil
-            let bottomG: String = !onNP ? "playpause.fill"
-                : (player.mode == .options ? "repeat"
-                   : (player.mode == .favourite ? (isFav ? "star" : "star.fill") : "playpause.fill"))
-            let leftG: String = (onNP && player.mode == .options) ? "arrow.left.arrow.right" : "backward.fill"
-            let rightG: String = (onNP && player.mode == .options) ? "shuffle" : "forward.fill"
+            let inOptions = onNP && player.mode == .options
+            let topG: String? = inOptions ? "sun.max.fill" : nil
+            let bottomG: String = inOptions ? (player.repeatMode == .one ? "repeat.1" : "repeat")
+                : (onNP && player.mode == .favourite ? (isFav ? "star" : "star.fill") : "playpause.fill")
+            let leftG: String = inOptions ? "arrow.left.arrow.right" : "backward.fill"
+            let rightG: String = inOptions ? "shuffle" : "forward.fill"
+            let topL: String? = inOptions ? (player.brightnessActive ? "Adjust" : "Bright") : nil
+            let bottomL: String? = inOptions ? repeatLabelText : nil
+            let leftL: String? = inOptions ? "\(player.crossfade)s" : nil
+            let rightL: String? = inOptions ? (player.shuffle ? "On" : "Off") : nil
+            let wheelTint: Color? = inOptions ? theme.accent : nil
 
             ZStack(alignment: .top) {
                 theme.bg.ignoresSafeArea()
@@ -73,7 +78,12 @@ struct ContentView: View {
                             topGlyph: topG,
                             bottomGlyph: bottomG,
                             leftGlyph: leftG,
-                            rightGlyph: rightG
+                            rightGlyph: rightG,
+                            topLabel: topL,
+                            bottomLabel: bottomL,
+                            leftLabel: leftL,
+                            rightLabel: rightL,
+                            tint: wheelTint
                         )
                     }
                     .frame(width: W, height: regionH)
@@ -182,12 +192,12 @@ struct ContentView: View {
         switch e.screen {
         case .main:
             return [
-                WRow(label: "Now Playing", action: .go(.nowPlaying, nil)),
                 WRow(label: "Music", action: .go(.musicMenu, nil)),
                 WRow(label: "Shuffle All", action: .shuffle(library.tracks)),
                 WRow(label: "Favourites", action: .go(.favourites, nil)),
                 WRow(label: "Playlists", action: .go(.playlists, nil)),
-                WRow(label: "Settings", action: .go(.settings, nil))
+                WRow(label: "Settings", action: .go(.settings, nil)),
+                WRow(label: "Now Playing", action: .go(.nowPlaying, nil))
             ]
         case .musicMenu:
             return [
@@ -362,7 +372,10 @@ struct ContentView: View {
 
     private func holdPlay() {
         resetIdleTimer()
-        // Screen off (dim to black). True device lock isn't available to apps, so "lock" also dims for now.
+        if store.holdPlayAction == "lock" && DeviceLock.lock() {
+            return
+        }
+        // Screen off (dim to black) — also the fallback if a real lock isn't available.
         savedBrightness = UIScreen.main.brightness
         UIScreen.main.brightness = 0
         screenOff = true
@@ -416,6 +429,14 @@ struct ContentView: View {
 
     private func holdPlayLabel(_ action: String) -> String {
         action == "lock" ? "Lock Device" : "Screen Off"
+    }
+
+    private var repeatLabelText: String {
+        switch player.repeatMode {
+        case .off: return "Off"
+        case .all: return "All"
+        case .one: return "One"
+        }
     }
 
     private func resetIdleTimer() {

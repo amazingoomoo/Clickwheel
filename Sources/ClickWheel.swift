@@ -19,6 +19,11 @@ struct ClickWheel: View {
     var bottomGlyph: String = "playpause.fill"
     var leftGlyph: String = "backward.fill"
     var rightGlyph: String = "forward.fill"
+    var topLabel: String? = nil
+    var bottomLabel: String? = nil
+    var leftLabel: String? = nil
+    var rightLabel: String? = nil
+    var tint: Color? = nil
 
     @State private var lastAngle: Double? = nil
     @State private var accumulated: Double = 0
@@ -44,25 +49,45 @@ struct ClickWheel: View {
                     .fill(theme.wheel)
                     .overlay(Circle().stroke(theme.divider, lineWidth: 1))
 
-                VStack {
-                    if let tg = topGlyph {
-                        Image(systemName: tg).font(.system(size: s * 0.075))
-                    } else {
-                        Text("MENU").font(.system(size: s * 0.072, weight: .semibold))
+                VStack(spacing: 0) {
+                    VStack(spacing: s * 0.01) {
+                        if let tg = topGlyph {
+                            Image(systemName: tg).font(.system(size: s * 0.075))
+                        } else {
+                            Text("MENU").font(.system(size: s * 0.072, weight: .semibold))
+                        }
+                        if let tl = topLabel {
+                            Text(tl).font(.system(size: s * 0.052, weight: .bold))
+                        }
                     }
                     Spacer()
-                    Image(systemName: bottomGlyph).font(.system(size: s * 0.075))
+                    VStack(spacing: s * 0.01) {
+                        if let bl = bottomLabel {
+                            Text(bl).font(.system(size: s * 0.052, weight: .bold))
+                        }
+                        Image(systemName: bottomGlyph).font(.system(size: s * 0.075))
+                    }
                 }
-                .foregroundColor(theme.wheelLabel)
-                .padding(.vertical, s * 0.07)
+                .foregroundColor(tint ?? theme.wheelLabel)
+                .padding(.vertical, s * 0.06)
 
-                HStack {
-                    Image(systemName: leftGlyph).font(.system(size: s * 0.075))
+                HStack(spacing: 0) {
+                    VStack(spacing: s * 0.01) {
+                        Image(systemName: leftGlyph).font(.system(size: s * 0.075))
+                        if let ll = leftLabel {
+                            Text(ll).font(.system(size: s * 0.052, weight: .bold))
+                        }
+                    }
                     Spacer()
-                    Image(systemName: rightGlyph).font(.system(size: s * 0.075))
+                    VStack(spacing: s * 0.01) {
+                        Image(systemName: rightGlyph).font(.system(size: s * 0.075))
+                        if let rl = rightLabel {
+                            Text(rl).font(.system(size: s * 0.052, weight: .bold))
+                        }
+                    }
                 }
-                .foregroundColor(theme.wheelLabel)
-                .padding(.horizontal, s * 0.075)
+                .foregroundColor(tint ?? theme.wheelLabel)
+                .padding(.horizontal, s * 0.07)
 
                 Circle()
                     .fill(theme.wheelC)
