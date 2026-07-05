@@ -6,8 +6,15 @@ import UIKit
 
 enum NowPlayingMode {
     case volume
+    case options
     case scrub
     case favourite
+}
+
+enum RepeatMode {
+    case off
+    case all
+    case one
 }
 
 final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
@@ -23,7 +30,14 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     @Published var volume: Float = 0.5
     @Published var volumeVisible: Bool = false
 
+    @Published var repeatMode: RepeatMode = .off
+    @Published var crossfade: Int = 0            // 0, 2 or 4 seconds
+    @Published var brightnessActive: Bool = false
+
     private var audio: AVAudioPlayer?
+    private var nextAudio: AVAudioPlayer?
+    private var crossfading = false
+    private var crossfadeWork: DispatchWorkItem?
     private var timer: Timer?
     private var volumeHideWork: DispatchWorkItem?
 
@@ -68,10 +82,12 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     }
 
     private func startCurrent() {
+        cancelCrossfade()
         guard let track = current else { return }
         do {
             let player = try AVAudioPlayer(contentsOf: track.url)
             player.delegate = self
+            player.volume = 1
             player.prepareToPlay()
             audio = player
             duration = player.duration
@@ -138,32 +154,119 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
-    // MARK: - Now Playing mode
+    // MARK: - Now Playing modes
 
     func cycleMode() {
         switch mode {
-        case .volume: mode = .scrub
+        case .volume: mode = .options
+        case .options: mode = .scrub
         case .scrub: mode = .favourite
         case .favourite: mode = .volume
         }
         volumeVisible = false
+        brightnessActive = false
     }
 
-    // MARK: - Timer
+    func cycleRepeat() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
+    }
+
+    func toggleShuffle() { shuffle.toggle() }
+
+    func cycleCrossfade() {
+        crossfade = crossfade == 0 ? 2 : (crossfade == 2 ? 4 : 0)
+    }
+
+    func toggleBrightness() { brightnessActive.toggle() }
+
+    // MARK: - Timer / crossfade
 
     private func startTimer() {
         stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             guard let self = self, let player = self.audio else { return }
             self.currentTime = player.currentTime
+            self.checkCrossfade()
         }
     }
     private func stopTimer() { timer?.invalidate(); timer = nil }
 
+    private func checkCrossfade() {
+        guard crossfade > 0, !crossfading, repeatMode != .one, let a = audio else { return }
+        let remaining = a.duration - a.currentTime
+        if remaining <= Double(crossfade) && remaining > 0.15 {
+            startCrossfade()
+        }
+    }
+
+    private func startCrossfade() {
+        guard !queue.isEmpty else { return }
+        if repeatMode == .off && !shuffle && index + 1 >= queue.count { return }
+        let nextIdx = shuffle ? Int.random(in: 0..<queue.count) : (index + 1) % queue.count
+        guard queue.indices.contains(nextIdx) else { return }
+        guard let np = try? AVAudioPlayer(contentsOf: queue[nextIdx].url) else { return }
+        np.delegate = self
+        np.volume = 0
+        np.prepareToPlay()
+        np.play()
+        np.setVolume(1, fadeDuration: Double(crossfade))
+        audio?.setVolume(0, fadeDuration: Double(crossfade))
+        nextAudio = np
+        crossfading = true
+        let work = DispatchWorkItem { [weak self] in self?.completeCrossfade(nextIndex: nextIdx) }
+        crossfadeWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(crossfade), execute: work)
+    }
+
+    private func completeCrossfade(nextIndex: Int) {
+        guard crossfading, let np = nextAudio, queue.indices.contains(nextIndex) else { return }
+        audio?.stop()
+        audio = np
+        nextAudio = nil
+        crossfading = false
+        index = nextIndex
+        np.volume = 1
+        duration = np.duration
+        currentTime = np.currentTime
+        isPlaying = true
+        loadArtwork(queue[nextIndex])
+        updateNowPlayingInfo()
+    }
+
+    private func cancelCrossfade() {
+        crossfadeWork?.cancel()
+        crossfadeWork = nil
+        nextAudio?.stop()
+        nextAudio = nil
+        crossfading = false
+        audio?.volume = 1
+    }
+
+    private func advanceAtEnd() {
+        guard !queue.isEmpty else { return }
+        if shuffle {
+            index = Int.random(in: 0..<queue.count); startCurrent(); return
+        }
+        if index + 1 < queue.count {
+            index += 1; startCurrent()
+        } else if repeatMode == .all {
+            index = 0; startCurrent()
+        } else {
+            isPlaying = false; stopTimer(); updateNowPlayingInfo()
+        }
+    }
+
     // MARK: - AVAudioPlayerDelegate
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-        next()
+        if crossfading { return }
+        guard player == audio else { return }
+        if repeatMode == .one { startCurrent(); return }
+        advanceAtEnd()
     }
 
     // MARK: - Artwork

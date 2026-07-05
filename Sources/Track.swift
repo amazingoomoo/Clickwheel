@@ -6,6 +6,7 @@ struct Track: Identifiable, Equatable {
     var title: String
     var artist: String
     var album: String
+    var trackNumber: Int = 0
 
     var id: String { relativePath }
 

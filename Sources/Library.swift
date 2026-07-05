@@ -7,6 +7,7 @@ struct CachedMeta: Codable {
     var title: String
     var artist: String
     var album: String
+    var track: Int
 }
 
 final class Library: ObservableObject {
@@ -39,7 +40,18 @@ final class Library: ObservableObject {
     init() { scan() }
 
     func track(withPath path: String) -> Track? { tracks.first { $0.relativePath == path } }
-    func tracksInAlbum(_ album: String) -> [Track] { tracks.filter { $0.album == album } }
+
+    // Albums play/display in track-number order (unknown numbers last).
+    func tracksInAlbum(_ album: String) -> [Track] {
+        tracks.filter { $0.album == album }.sorted { a, b in
+            let an = a.trackNumber == 0 ? Int.max : a.trackNumber
+            let bn = b.trackNumber == 0 ? Int.max : b.trackNumber
+            if an != bn { return an < bn }
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+        }
+    }
+
+    // Artist songs stay alphabetical.
     func tracksByArtist(_ artist: String) -> [Track] {
         tracks.filter { $0.artist == artist }
             .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
@@ -75,7 +87,7 @@ final class Library: ObservableObject {
         var toRead: [FileInfo] = []
         for f in files {
             if let c = cache[f.path], abs(c.mtime - f.mtime) < 1 {
-                built.append(Track(url: f.url, relativePath: f.path, title: c.title, artist: c.artist, album: c.album))
+                built.append(Track(url: f.url, relativePath: f.path, title: c.title, artist: c.artist, album: c.album, trackNumber: c.track))
             } else {
                 built.append(Track(url: f.url, relativePath: f.path, title: Library.cleanName(f.url), artist: "", album: "Unknown Album"))
                 toRead.append(f)
@@ -113,7 +125,8 @@ final class Library: ObservableObject {
                             break
                         }
                     }
-                    pending[f.path] = CachedMeta(mtime: f.mtime, title: title, artist: artist, album: album)
+                    let track = Library.trackNumber(asset)
+                    pending[f.path] = CachedMeta(mtime: f.mtime, title: title, artist: artist, album: album, track: track)
                 }
                 processed += 1
                 if processed % 150 == 0 {
@@ -127,6 +140,23 @@ final class Library: ObservableObject {
         }
     }
 
+    private static func trackNumber(_ asset: AVURLAsset) -> Int {
+        let ids: [AVMetadataIdentifier] = [.iTunesMetadataTrackNumber, .id3MetadataTrackNumber]
+        for id in ids {
+            for item in AVMetadataItem.metadataItems(from: asset.metadata, filteredByIdentifier: id) {
+                if let n = item.numberValue { return n.intValue }
+                if let s = item.stringValue {
+                    let first = s.split(separator: "/").first.map(String.init) ?? s
+                    if let n = Int(first.trimmingCharacters(in: .whitespaces)) { return n }
+                }
+                if let d = item.dataValue, d.count >= 4 {
+                    return (Int(d[2]) << 8) | Int(d[3])
+                }
+            }
+        }
+        return 0
+    }
+
     private func applyMeta(_ meta: [String: CachedMeta], save: Bool) {
         if !meta.isEmpty {
             for (path, m) in meta { metaCache[path] = m }
@@ -136,6 +166,7 @@ final class Library: ObservableObject {
                 nt.title = m.title
                 nt.artist = m.artist
                 nt.album = m.album
+                nt.trackNumber = m.track
                 return nt
             }
             tracks.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }

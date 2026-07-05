@@ -10,7 +10,7 @@ enum Screen: Equatable {
     case playlistTracks(Int)
     case plEdit(Int)
     case addToPlaylist(String)
-    case settings, themeList, wheelList, idleList
+    case settings, themeList, wheelList, idleList, holdPlayList
     case nowPlaying
 }
 
@@ -36,6 +36,7 @@ enum WAction {
     case toggleHaptics
     case toggleClick
     case idle(Int)
+    case holdPlay(String)
     case newPlaylist
     case newPlaylistAdd
     case addToPlaylist(Int)
@@ -215,10 +216,12 @@ struct NowPlayingScreen: View {
     }
 
     @ViewBuilder private var controlRow: some View {
-        if player.mode == .favourite {
+        if player.mode == .options {
+            optionsDisplay
+        } else if player.mode == .favourite {
             let on = player.current.map { store.isFavourite($0.relativePath) } ?? false
             Image(systemName: on ? "star.fill" : "star")
-                .font(.system(size: 16))
+                .font(.system(size: 18))
                 .foregroundColor(on ? favouriteGold : theme.muted)
         } else if player.mode == .volume && player.volumeVisible {
             HStack(spacing: 8) {
@@ -240,8 +243,10 @@ struct NowPlayingScreen: View {
                         Capsule().fill(theme.divider)
                         Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
                         if player.mode == .scrub {
-                            Circle().fill(theme.accent).frame(width: 10, height: 10)
-                                .offset(x: g.size.width * CGFloat(fraction) - 5)
+                            Circle().fill(theme.accent)
+                                .frame(width: 13, height: 13)
+                                .overlay(Circle().stroke(theme.bg, lineWidth: 2))
+                                .offset(x: g.size.width * CGFloat(fraction) - 6.5)
                         }
                     }
                 }
@@ -254,6 +259,30 @@ struct NowPlayingScreen: View {
                 .font(.system(size: 8))
                 .foregroundColor(theme.muted)
             }
+        }
+    }
+
+    private var optionsDisplay: some View {
+        HStack(spacing: 14) {
+            optionChip("repeat", repeatText)
+            optionChip("shuffle", player.shuffle ? "On" : "Off")
+            optionChip("arrow.left.arrow.right", "\(player.crossfade)s")
+            optionChip("sun.max.fill", player.brightnessActive ? "Adjust" : "Tap")
+        }
+    }
+
+    private func optionChip(_ icon: String, _ value: String) -> some View {
+        VStack(spacing: 2) {
+            Image(systemName: icon).font(.system(size: 12)).foregroundColor(theme.accent)
+            Text(value).font(.system(size: 9)).foregroundColor(theme.fg)
+        }
+    }
+
+    private var repeatText: String {
+        switch player.repeatMode {
+        case .off: return "Off"
+        case .all: return "All"
+        case .one: return "One"
         }
     }
 

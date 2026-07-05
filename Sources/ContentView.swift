@@ -8,6 +8,8 @@ struct ContentView: View {
 
     @State private var stack: [NavEntry] = [NavEntry(screen: .main)]
     @State private var idleWork: DispatchWorkItem? = nil
+    @State private var screenOff = false
+    @State private var savedBrightness: CGFloat = 0.5
 
     @State private var showNameEntry = false
     @State private var nameText = ""
@@ -34,6 +36,14 @@ struct ContentView: View {
                 : style == "medium" ? .center
                 : (style == "small-top" ? .top : (style == "small-bottom" ? .bottom : .center))
             let contentH = max(0, availH - regionH)
+            let onNP = stack.last?.screen == .nowPlaying
+            let isFav = player.current.map { store.isFavourite($0.relativePath) } ?? false
+            let topG: String? = (onNP && player.mode == .options) ? "sun.max.fill" : nil
+            let bottomG: String = !onNP ? "playpause.fill"
+                : (player.mode == .options ? "repeat"
+                   : (player.mode == .favourite ? (isFav ? "star" : "star.fill") : "playpause.fill"))
+            let leftG: String = (onNP && player.mode == .options) ? "arrow.left.arrow.right" : "backward.fill"
+            let rightG: String = (onNP && player.mode == .options) ? "shuffle" : "forward.fill"
 
             ZStack(alignment: .top) {
                 theme.bg.ignoresSafeArea()
@@ -52,12 +62,18 @@ struct ContentView: View {
                             diameter: wheelD,
                             onScrollUp: { scroll(-1) },
                             onScrollDown: { scroll(1) },
-                            onMenu: { menuBack() },
+                            onMenu: { onMenuTap() },
                             onSelect: { onCenter() },
-                            onPrev: { resetIdleTimer(); player.previous() },
-                            onNext: { resetIdleTimer(); player.next() },
+                            onPrev: { onPrevTap() },
+                            onNext: { onNextTap() },
                             onPlayPause: { onPlay() },
-                            onLongCenter: { onLongCenter() }
+                            onLongCenter: { onLongCenter() },
+                            onLongMenu: { goToRoot() },
+                            onLongPlay: { holdPlay() },
+                            topGlyph: topG,
+                            bottomGlyph: bottomG,
+                            leftGlyph: leftG,
+                            rightGlyph: rightG
                         )
                     }
                     .frame(width: W, height: regionH)
@@ -66,6 +82,7 @@ struct ContentView: View {
                 VolumeHost().frame(width: 1, height: 1).opacity(0.001)
 
                 if showNameEntry { nameOverlay }
+                if screenOff { screenOffOverlay }
             }
         }
         .ignoresSafeArea(.container, edges: .bottom)
@@ -119,6 +136,13 @@ struct ContentView: View {
         }
     }
 
+    private var screenOffOverlay: some View {
+        Color.black
+            .ignoresSafeArea()
+            .contentShape(Rectangle())
+            .onTapGesture { wakeScreen() }
+    }
+
     // MARK: - Titles
 
     private func title(for e: NavEntry) -> String {
@@ -139,6 +163,7 @@ struct ContentView: View {
         case .themeList: return "Theme"
         case .wheelList: return "Wheel"
         case .idleList: return "Return to Now Playing"
+        case .holdPlayList: return "Hold Play/Pause"
         case .nowPlaying: return "Now Playing"
         }
     }
@@ -157,6 +182,7 @@ struct ContentView: View {
         switch e.screen {
         case .main:
             return [
+                WRow(label: "Now Playing", action: .go(.nowPlaying, nil)),
                 WRow(label: "Music", action: .go(.musicMenu, nil)),
                 WRow(label: "Shuffle All", action: .shuffle(library.tracks)),
                 WRow(label: "Favourites", action: .go(.favourites, nil)),
@@ -241,10 +267,14 @@ struct ContentView: View {
                 WRow(label: "Background Symbols", trailing: .value(store.symbolsOn ? "On" : "Off"), action: .toggleSymbols),
                 WRow(label: "Haptics", trailing: .value(store.hapticsOn ? "On" : "Off"), action: .toggleHaptics),
                 WRow(label: "Wheel Click", trailing: .value(store.clickOn ? "On" : "Off"), action: .toggleClick),
-                WRow(label: "Return to Now Playing", trailing: .value(idleLabel(store.idleTimeout)), action: .go(.idleList, nil))
+                WRow(label: "Return to Now Playing", trailing: .value(idleLabel(store.idleTimeout)), action: .go(.idleList, nil)),
+                WRow(label: "Hold Play/Pause", trailing: .value(holdPlayLabel(store.holdPlayAction)), action: .go(.holdPlayList, nil))
             ]
         case .idleList:
             return idleOptions.map { WRow(label: $0.1, trailing: .checkmark($0.0 == store.idleTimeout), action: .idle($0.0)) }
+        case .holdPlayList:
+            let opts = [("screen", "Screen Off"), ("lock", "Lock Device")]
+            return opts.map { WRow(label: $0.1, trailing: .checkmark($0.0 == store.holdPlayAction), action: .holdPlay($0.0)) }
         case .themeList:
             return Themes.order.map { key in
                 WRow(label: Themes.labels[key] ?? key, trailing: .checkmark(key == store.themeKey), action: .theme(key))
@@ -266,6 +296,10 @@ struct ContentView: View {
         if entry.screen == .nowPlaying {
             switch player.mode {
             case .volume: player.nudgeVolume(Float(dir) * 0.06)
+            case .options:
+                if player.brightnessActive {
+                    UIScreen.main.brightness = min(1, max(0, UIScreen.main.brightness + CGFloat(dir) * 0.06))
+                }
             case .scrub: player.scrub(by: Double(dir) * 5)
             case .favourite: break
             }
@@ -286,15 +320,57 @@ struct ContentView: View {
     private func onPlay() {
         resetIdleTimer()
         if stack.last?.screen == .nowPlaying {
-            if player.mode == .favourite {
+            switch player.mode {
+            case .favourite:
                 if let p = player.current?.relativePath { store.toggleFavourite(p) }
-            } else {
+            case .options:
+                player.cycleRepeat()
+            default:
                 player.togglePlayPause()
             }
         } else if player.current != nil {
-            // In a menu with something loaded: jump to Now Playing instead of toggling.
             pushNowPlaying()
         }
+    }
+
+    private func onMenuTap() {
+        if stack.last?.screen == .nowPlaying && player.mode == .options {
+            resetIdleTimer()
+            player.toggleBrightness()
+        } else {
+            menuBack()
+        }
+    }
+
+    private func onNextTap() {
+        resetIdleTimer()
+        if stack.last?.screen == .nowPlaying && player.mode == .options {
+            player.toggleShuffle()
+        } else {
+            player.next()
+        }
+    }
+
+    private func onPrevTap() {
+        resetIdleTimer()
+        if stack.last?.screen == .nowPlaying && player.mode == .options {
+            player.cycleCrossfade()
+        } else {
+            player.previous()
+        }
+    }
+
+    private func holdPlay() {
+        resetIdleTimer()
+        // Screen off (dim to black). True device lock isn't available to apps, so "lock" also dims for now.
+        savedBrightness = UIScreen.main.brightness
+        UIScreen.main.brightness = 0
+        screenOff = true
+    }
+
+    private func wakeScreen() {
+        UIScreen.main.brightness = savedBrightness
+        screenOff = false
     }
 
     private func onLongCenter() {
@@ -311,6 +387,11 @@ struct ContentView: View {
     }
 
     private func menuBack() { resetIdleTimer(); popTop() }
+
+    private func goToRoot() {
+        resetIdleTimer()
+        stack = [NavEntry(screen: .main)]
+    }
 
     private func pushNowPlaying() {
         if stack.last?.screen != .nowPlaying { stack.append(NavEntry(screen: .nowPlaying)) }
@@ -333,12 +414,21 @@ struct ContentView: View {
         }
     }
 
+    private func holdPlayLabel(_ action: String) -> String {
+        action == "lock" ? "Lock Device" : "Screen Off"
+    }
+
     private func resetIdleTimer() {
         idleWork?.cancel()
         let timeout = store.idleTimeout
         guard timeout > 0 else { idleWork = nil; return }
         let work = DispatchWorkItem {
-            if player.isPlaying && stack.last?.screen != .nowPlaying {
+            if stack.last?.screen == .nowPlaying {
+                if player.mode != .volume {
+                    player.mode = .volume
+                    player.volumeVisible = false
+                }
+            } else if player.isPlaying {
                 pushNowPlaying()
             }
         }
@@ -371,6 +461,8 @@ struct ContentView: View {
         case .idle(let seconds):
             store.setIdle(seconds)
             resetIdleTimer()
+        case .holdPlay(let action):
+            store.setHoldPlay(action)
         case .newPlaylist:
             promptName { store.createPlaylist(name: $0) }
         case .newPlaylistAdd:
