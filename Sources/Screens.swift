@@ -283,7 +283,7 @@ struct NowPlayingScreen: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(theme.divider)
                     Capsule().fill(theme.accent).frame(width: g.size.width * CGFloat(fraction))
-                    if player.mode == .scrub {
+                    if player.mode == .options {
                         Circle().fill(theme.accent)
                             .frame(width: 13, height: 13)
                             .overlay(Circle().stroke(theme.bg, lineWidth: 2))
@@ -291,7 +291,7 @@ struct NowPlayingScreen: View {
                     }
                 }
             }
-            .frame(height: player.mode == .scrub ? 8 : 5)
+            .frame(height: player.mode == .options ? 8 : 5)
         }
     }
 

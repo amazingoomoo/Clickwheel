@@ -7,7 +7,6 @@ import UIKit
 enum NowPlayingMode {
     case volume
     case options
-    case scrub
 }
 
 enum RepeatMode {
@@ -159,8 +158,7 @@ final class Player: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func cycleMode() {
         switch mode {
         case .volume: mode = .options
-        case .options: mode = .scrub
-        case .scrub: mode = .volume
+        case .options: mode = .volume
         }
         volumeVisible = false
     }

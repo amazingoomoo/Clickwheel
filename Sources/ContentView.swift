@@ -329,8 +329,7 @@ struct ContentView: View {
         } else if entry.screen == .nowPlaying {
             switch player.mode {
             case .volume: player.nudgeVolume(Float(dir) * 0.06)
-            case .options: break
-            case .scrub: player.scrub(by: Double(dir) * 5)
+            case .options: player.scrub(by: Double(dir) * 5)
             }
         } else {
             let count = rows(for: entry).count
